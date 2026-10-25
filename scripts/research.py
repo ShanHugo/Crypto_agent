@@ -4,7 +4,8 @@
     .venv\\Scripts\\python.exe scripts/research.py --family daily --stage holdout --variant trend-sma200-c1
 
 --family ema1h：第一輪（1h EMA 交叉）；daily：第二輪（日 K 趨勢／買低賣高）；兩輪研究期都全部未通過。
---family rebalance：第三輪（ETH／台幣比例再平衡）。
+--family rebalance：第三輪（ETH／台幣比例再平衡），研究期全部未通過。
+--family intraday：第四輪（凌晨 01:30～07:30 買低賣高，不留倉過夜；需要先 fetch_bars.py --period 5）。
 
 先執行 scripts/fetch_bars.py 更新 K 線。考卷結果存在 state/research/holdout.json，之後執行只顯示當時的結果。
 """
@@ -20,8 +21,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 
-from crypto_robot.lab import (daily_research, daily_variants, periods, rebalance_research,  # noqa: E402
-                              rebalance_variants, research, variants)
+from crypto_robot.lab import (daily_research, daily_variants, intraday_research, intraday_variants,  # noqa: E402
+                              periods, rebalance_research, rebalance_variants, research, variants)
 from crypto_robot.store.bars import BarStore  # noqa: E402
 
 HOLDOUT_FILE = ROOT / 'state' / 'research' / 'holdout.json'
@@ -39,7 +40,7 @@ def git_commit() -> str:
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
-    ap.add_argument('--family', choices=['ema1h', 'daily', 'rebalance'], required=True)
+    ap.add_argument('--family', choices=['ema1h', 'daily', 'rebalance', 'intraday'], required=True)
     ap.add_argument('--stage', choices=['dev', 'holdout'], required=True)
     ap.add_argument('--variant', help='考卷期要考的規則名稱（見研究期報告）')
     ap.add_argument('--db', default=str(ROOT / 'data' / 'bars.db'))
@@ -47,14 +48,19 @@ def main() -> None:
 
     store = BarStore(args.db)
     bars = store.load(periods.MARKET, periods.PERIOD_MIN)
+    bars5 = store.load(periods.MARKET, 5) if args.family == 'intraday' else None
     store.close()
     if not bars:
         sys.exit('快取沒有 K 線，先執行 scripts/fetch_bars.py')
+    if args.family == 'intraday' and not bars5:
+        sys.exit('快取沒有 5 分 K，先執行 scripts/fetch_bars.py --period 5 --since 2020-12-01')
+    data = (bars, bars5) if args.family == 'intraday' else bars
     lab, grid = {'ema1h': (research, variants), 'daily': (daily_research, daily_variants),
-                 'rebalance': (rebalance_research, rebalance_variants)}[args.family]
+                 'rebalance': (rebalance_research, rebalance_variants),
+                 'intraday': (intraday_research, intraday_variants)}[args.family]
 
     if args.stage == 'dev':
-        text = lab.dev_report(lab.run_dev(bars), datetime.now().strftime('%Y-%m-%d %H:%M'))
+        text = lab.dev_report(lab.run_dev(data), datetime.now().strftime('%Y-%m-%d %H:%M'))
         out = ROOT / 'reports' / f'research_dev_{args.family}_{datetime.now():%Y%m%d}.md'
         out.parent.mkdir(exist_ok=True)
         out.write_text(text, encoding='utf-8')
@@ -74,7 +80,7 @@ def main() -> None:
         if answer.strip() != 'yes':
             sys.exit('已取消')
     end_ms = bars[-1].ts + periods.PERIOD_MIN * 60_000
-    record = lab.run_holdout(bars, grid.by_name(args.variant) if args.variant else None, end_ms, HOLDOUT_FILE, git_commit())
+    record = lab.run_holdout(data, grid.by_name(args.variant) if args.variant else None, end_ms, HOLDOUT_FILE, git_commit())
     print(json.dumps(record, ensure_ascii=False, indent=2))
 
 

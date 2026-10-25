@@ -19,14 +19,15 @@ py -3.12 -m venv .venv
 
 ```bash
 .venv\Scripts\python.exe scripts/fetch_bars.py              # 補 ethtwd 1h K 線到 data/bars.db（第一次從 2018 年起，約 1 分鐘）
+.venv\Scripts\python.exe scripts/fetch_bars.py --period 5 --since 2020-12-01   # 5 分 K（第四輪凌晨時段研究用，約 3 分鐘）
 .venv\Scripts\python.exe scripts/fetch_bars.py --no-fetch   # 只看快取的資料品質與每年流動性
 ```
 
 ## 研究
 
 ```bash
-.venv\Scripts\python.exe scripts/research.py --family rebalance --stage dev                      # 研究期 2021～2023：全部規則，報告寫到 reports/
-.venv\Scripts\python.exe scripts/research.py --family rebalance --stage holdout --variant <名稱> # 考卷期 2024 起：只考一次
+.venv\Scripts\python.exe scripts/research.py --family intraday --stage dev                      # 研究期 2021～2023：全部規則，報告寫到 reports/
+.venv\Scripts\python.exe scripts/research.py --family intraday --stage holdout --variant <名稱> # 考卷期 2024 起：只考一次
 ```
 規則組合與通過標準在 `src/crypto_robot/lab/variants.py`（看結果前訂定）。考卷結果存在 `state/research/holdout.json`，之後執行只顯示當時的結果。
 
