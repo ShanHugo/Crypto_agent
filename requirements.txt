@@ -1,0 +1,8 @@
+# 程式直接用到的套件（人工維護）。第一次安裝後產生 requirements.lock 鎖定全部版本，之後安裝用 lock。
+aiohttp>=3.9
+python-dotenv>=1.0.1
+tzdata>=2024.1
+
+# 測試
+pytest>=8.0
+pytest-asyncio>=0.23

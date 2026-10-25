@@ -1,0 +1,24 @@
+# Python venv
+.venv/
+
+# Bytecode
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Env files（金鑰、webhook）
+.env
+.env.*
+!.env.example
+
+# 個人設定、帳戶狀態、資料快取、報告（不要提交）
+config.json
+state/
+data/
+logs/
+reports/
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
