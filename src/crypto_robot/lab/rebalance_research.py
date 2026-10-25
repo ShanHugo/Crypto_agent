@@ -1,4 +1,4 @@
-"""第三輪研究（比例再平衡）：研究期全部比較、考卷期只考一次。和前兩輪共用同一個考卷檔。"""
+"""第三輪研究（比例再平衡）：研究期全部比較、考卷期只考一次。考卷結果存在 state/research/holdout.json（已考過）。"""
 from __future__ import annotations
 
 import json
@@ -13,8 +13,7 @@ from crypto_robot.lab.backtest import buy_and_hold
 from crypto_robot.lab.metrics import segment_return, stats
 from crypto_robot.lab.rebalance_backtest import rebalance_count, run_rebalance
 from crypto_robot.lab.rebalance_variants import MIN_REBALANCES, RebalanceVariant, all_variants, passes
-from crypto_robot.lab.research import DEV_MID, day, pct, window
-from crypto_robot.lab.variants import COSTS
+from crypto_robot.lab.common import COSTS, DEV_MID, day, pct, window
 
 
 def evaluate(hourly: list[Bar], v: RebalanceVariant, start_ms: int, end_ms: int, halves: list[tuple[int, int]]) -> dict:

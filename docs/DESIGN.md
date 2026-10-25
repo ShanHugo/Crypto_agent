@@ -110,36 +110,35 @@ Data ──BarClosed──▶ Strategy ──EntrySignal──▶ RiskGuard ─�
                              └──── Discord／健康檢查 ◀──── 所有事件 ─┘
 ```
 
-### 2.4 目錄
+### 2.4 目錄（2026-10-26 現況）
+
+目前只有比例再平衡模擬帳戶在跑，用排程腳本、不用常駐 Agent。上面 2.2～2.3 的常駐 Agent 架構留作接真單或盤中交易時的設計；
+當時建的空資料夾（risk／execution／monitor）和沒通過的研究程式已刪除，需要時從 git 歷史找回（ff7425a 以前）。
 
 ```
 Crypto_Robot/
 ├─ docs/DESIGN.md             本文件
 ├─ src/crypto_robot/
-│  ├─ core/                   Event Bus、事件型別、supervisor、Decimal 工具、時間工具
-│  ├─ exchange/max/           MAX REST v3／WebSocket、簽章、正規化
+│  ├─ core/                   資料格式、Decimal 工具、台北時間工具
+│  ├─ exchange/max/           MAX 公開 REST v3（市場、K 線、盤口、報價、伺服器時間）
 │  ├─ agents/
-│  │  ├─ data/                K 線、成交推播、資料品質
-│  │  ├─ strategy/            指標與訊號（純函式，研究與實盤共用同一份）
-│  │  ├─ risk/                RiskGuard、每日基準、熔斷
-│  │  ├─ execution/           下單狀態機、對帳、模擬成交
-│  │  └─ monitor/             停損、權益、健康檢查
-│  ├─ store/                  SQLite 結構與存取
-│  ├─ notify/                 Discord（防轟炸、失敗不阻斷）
-│  └─ lab/                    研究：回測、研究期／考卷期、成績單
-├─ scripts/                   命令列進入點（run_bot、backtest、unhalt、health…）
+│  │  ├─ data/                K 線補資料、資料品質、日 K 合成
+│  │  └─ strategy/            比例再平衡（純函式，研究與模擬共用同一份）
+│  ├─ store/                  K 線快取（SQLite）
+│  ├─ notify/                 Discord（失敗不阻斷）
+│  ├─ paper/                  模擬帳戶：盤口模擬成交、比例再平衡帳戶
+│  └─ lab/                    研究：基準、統計、比例再平衡回測與考卷
+├─ scripts/                   fetch_bars、research、paper_rebalance、排程（run_scheduled.cmd、register_tasks.ps1）
 ├─ tests/
-├─ state/                     SQLite、暫停檔、健康紀錄（不進 git）
+├─ state/                     模擬帳戶、考卷結果（不進 git）
 ├─ data/                      K 線快取（不進 git）
-├─ logs/                      （不進 git）
+├─ logs/                      排程紀錄（不進 git）
 └─ reports/                   研究報告（不進 git）
 ```
 
-**最重要的一條**：`strategy/` 是純函式，研究回測與即時交易呼叫同一份程式碼。這樣回測結果才代表實盤會做的事。
-
----
-
 ## 3. 交易規則
+
+> 本節是原始規格的 1h EMA 交叉規則。第一輪研究期 64 組全部未通過（6.3），程式已刪除，保留本節作為紀錄。
 
 ### 3.1 標的與部位限制
 

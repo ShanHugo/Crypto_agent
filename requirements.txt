@@ -2,7 +2,6 @@
 # and install from the lock. Keep this file ASCII: pip on Windows (cp950) cannot read UTF-8 comments.
 aiohttp>=3.9
 python-dotenv>=1.0.1
-tzdata>=2024.1
 
 # tests
 pytest>=8.0

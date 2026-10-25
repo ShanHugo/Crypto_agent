@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from decimal import ROUND_DOWN, ROUND_HALF_EVEN, Decimal
+from decimal import ROUND_DOWN, Decimal
 
 
 def to_decimal(value) -> Decimal:
@@ -25,6 +25,3 @@ def amount_to_precision(amount: Decimal, places: int) -> Decimal:
     """數量無條件捨去到交易所精度，避免賣出超過持有量。"""
     return amount.quantize(Decimal(1).scaleb(-places), rounding=ROUND_DOWN)
 
-
-def price_to_precision(price: Decimal, places: int) -> Decimal:
-    return price.quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_EVEN)

@@ -14,7 +14,7 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from crypto_robot.agents.strategy.intraday import taipei_date, taipei_hm
+from crypto_robot.core.timeutil import taipei_date, taipei_hm
 from crypto_robot.agents.strategy.rebalance import RebalanceParams, eth_weight, needs_rebalance, target_delta
 from crypto_robot.core.models import Market, OrderBook
 from crypto_robot.core.num import amount_to_precision

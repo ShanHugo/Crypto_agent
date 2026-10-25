@@ -72,10 +72,3 @@ def segment_return(res: Result, start_ms: int, end_ms: int) -> float:
     base = before[-1] if before else res.initial
     return float(inside[-1] / base) - 1
 
-
-def segment_drawdown(res: Result, start_ms: int, end_ms: int) -> float:
-    """[start_ms, end_ms) 之間的最大回撤（以區間前一根收盤權益為起點）。"""
-    before = [float(v) for ts, v in res.equity if ts < start_ms]
-    inside = [float(v) for ts, v in res.equity if start_ms <= ts < end_ms]
-    base = before[-1] if before else float(res.initial)
-    return max_drawdown([base] + inside)

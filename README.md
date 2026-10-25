@@ -19,7 +19,6 @@ py -3.12 -m venv .venv
 
 ```bash
 .venv\Scripts\python.exe scripts/fetch_bars.py              # 補 ethtwd 1h K 線到 data/bars.db（第一次從 2018 年起，約 1 分鐘）
-.venv\Scripts\python.exe scripts/fetch_bars.py --period 5 --since 2020-12-01   # 5 分 K（第四輪凌晨時段研究用，約 3 分鐘）
 .venv\Scripts\python.exe scripts/fetch_bars.py --no-fetch   # 只看快取的資料品質與每年流動性
 ```
 
@@ -37,10 +36,10 @@ ETH 目標 50%，偏離 10 個百分點就調回；用 MAX 當下盤口模擬成
 ## 研究
 
 ```bash
-.venv\Scripts\python.exe scripts/research.py --family intraday --stage dev                      # 研究期 2021～2023：全部規則，報告寫到 reports/
-.venv\Scripts\python.exe scripts/research.py --family intraday --stage holdout --variant <名稱> # 考卷期 2024 起：只考一次
+.venv\Scripts\python.exe scripts/research.py --stage dev       # 比例再平衡研究期 2021～2023：12 組規則，報告寫到 reports/
+.venv\Scripts\python.exe scripts/research.py --stage holdout   # 考卷期（已考過）：顯示當時的結果
 ```
-規則組合與通過標準在 `src/crypto_robot/lab/variants.py`（看結果前訂定）。考卷結果存在 `state/research/holdout.json`，之後執行只顯示當時的結果。
+四輪研究（1h 均線交叉、日 K 趨勢／買低賣高、比例再平衡、凌晨時段買低賣高）的結果記在 docs/DESIGN.md 6.3；沒通過的三輪程式已刪除，留在 git 歷史。規則組合與通過標準在 `src/crypto_robot/lab/rebalance_variants.py`（看結果前訂定）。考卷結果存在 `state/research/holdout.json`，之後執行只顯示當時的結果。
 
 ## 測試
 

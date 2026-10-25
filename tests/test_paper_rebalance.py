@@ -3,7 +3,7 @@ from decimal import Decimal as D
 
 import pytest
 
-from crypto_robot.agents.strategy.intraday import TAIPEI
+from crypto_robot.core.timeutil import TAIPEI
 from crypto_robot.agents.strategy.rebalance import RebalanceParams
 from crypto_robot.core.models import Market, OrderBook
 from crypto_robot.paper.fills import market_buy, market_sell

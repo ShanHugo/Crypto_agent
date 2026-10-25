@@ -4,7 +4,7 @@ from decimal import Decimal
 import aiohttp
 import pytest
 
-from crypto_robot.core.num import amount_to_precision, loads, price_to_precision, to_decimal
+from crypto_robot.core.num import amount_to_precision, loads, to_decimal
 from crypto_robot.exchange.max.public import MaxApiError, MaxPublicClient
 from fakes import DEPTH, MARKETS, TICKERS, FakeSession, k_rows
 
@@ -31,7 +31,6 @@ def test_loads_never_produces_float():
 
 def test_precision_rounding():
     assert amount_to_precision(Decimal('0.1234569'), 6) == Decimal('0.123456')   # 數量一律捨去
-    assert price_to_precision(Decimal('76827.35'), 1) == Decimal('76827.4')
 
 
 async def test_markets_parsed_with_decimal_limits():

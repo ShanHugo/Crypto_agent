@@ -15,5 +15,4 @@ pytest==9.1.1
 pytest-asyncio==1.4.0
 python-dotenv==1.2.4
 typing_extensions==4.16.0
-tzdata==2026.5
 yarl==1.25.1
