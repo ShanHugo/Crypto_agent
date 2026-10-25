@@ -30,7 +30,7 @@ ETH 目標 50%，偏離 10 個百分點就調回；用 MAX 當下盤口模擬成
 .venv\Scripts\python.exe scripts/paper_rebalance.py --dry-run   # 只印出
 .venv\Scripts\python.exe scripts/paper_rebalance.py --status    # 帳戶走勢與交易紀錄
 ```
-建立排程（以**系統管理員身分**開 PowerShell）：`powershell -ExecutionPolicy Bypass -File scriptsegister_tasks.ps1`（加 `-Disable` 停用）。
+建立排程（以**系統管理員身分**開 PowerShell）：`powershell -ExecutionPolicy Bypass -File scripts\register_tasks.ps1`（加 `-Disable` 停用）。
 要推送 Discord：複製 `.env.example` 為 `.env`，填 `PAPER_WEBHOOK_URL` 或 `DISCORD_WEBHOOK_URL`。暫停：建立 `state/paper_rebalance.paused`。
 
 ## 研究
