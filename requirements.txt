@@ -1,8 +1,9 @@
-# 程式直接用到的套件（人工維護）。第一次安裝後產生 requirements.lock 鎖定全部版本，之後安裝用 lock。
+# Direct dependencies (hand-maintained). After the first install, generate requirements.lock
+# and install from the lock. Keep this file ASCII: pip on Windows (cp950) cannot read UTF-8 comments.
 aiohttp>=3.9
 python-dotenv>=1.0.1
 tzdata>=2024.1
 
-# 測試
+# tests
 pytest>=8.0
 pytest-asyncio>=0.23

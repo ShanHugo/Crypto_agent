@@ -12,11 +12,11 @@ __pycache__/
 !.env.example
 
 # 個人設定、帳戶狀態、資料快取、報告（不要提交）
-config.json
-state/
-data/
-logs/
-reports/
+/config.json
+/state/
+/data/
+/logs/
+/reports/
 
 # OS / IDE
 .DS_Store
