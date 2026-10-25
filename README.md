@@ -25,10 +25,11 @@ py -3.12 -m venv .venv
 
 ## 比例再平衡模擬帳戶
 
-ETH 目標 50%，偏離 10 個百分點就調回；用 MAX 當下盤口模擬成交，不下真單。每天 01:35 由排程執行（只在 01:30～07:30 動作）。
+ETH 目標 50%，偏離 10 個百分點就調回；用 MAX 當下盤口模擬成交，不下真單。每天 01:35 由排程執行（只在 01:30～07:30 動作），08:30 推送當天凌晨的結果到 Discord。
 ```bash
 .venv\Scripts\python.exe scripts/paper_rebalance.py --dry-run   # 只印出
 .venv\Scripts\python.exe scripts/paper_rebalance.py --status    # 帳戶走勢與交易紀錄
+.venv\Scripts\python.exe scripts/paper_rebalance.py --report --no-send   # 預覽 08:30 的通知
 ```
 建立排程（以**系統管理員身分**開 PowerShell）：`powershell -ExecutionPolicy Bypass -File scripts\register_tasks.ps1`（加 `-Disable` 停用）。
 要推送 Discord：複製 `.env.example` 為 `.env`，填 `PAPER_WEBHOOK_URL` 或 `DISCORD_WEBHOOK_URL`。暫停：建立 `state/paper_rebalance.paused`。

@@ -176,7 +176,9 @@ def run_day(store: PaperStore, book: OrderBook, market: Market, params: Rebalanc
         'equity': equity, 'weight': eth_weight(acct.eth, acct.cash, price),
         'static_equity': acct.static_cash + acct.static_eth * price,
         'hodl_equity': acct.hodl_cash + acct.hodl_eth * price,
-        'initial': acct.initial, 'trades': trades, 'note': note, 'params': acct.params,
+        'initial': acct.initial, 'note': note, 'params': acct.params,
+        'trades': [{'side': side, 'qty': f.qty, 'avg_price': f.avg_price, 'fee': f.fee, 'weight_after': wa}
+                   for side, _, f, _, wa in trades],
     }
     if write:
         with store.db:
@@ -193,3 +195,23 @@ def run_day(store: PaperStore, book: OrderBook, market: Market, params: Rebalanc
                 str(result['weight']), str(result['static_equity']), str(result['hodl_equity']), action,
                 '；'.join(note)))
     return result
+
+
+def day_report(store: PaperStore, day: date) -> dict | None:
+    """從資料庫讀出某一天的執行結果，格式和 run_day 的回傳值相同；那天沒有執行就回傳 None。"""
+    row = store.db.execute('SELECT price, cash, eth, equity, weight, static_equity, hodl_equity, action, note '
+                           'FROM snapshots WHERE date = ?', (day.isoformat(),)).fetchone()
+    acct = store.account()
+    if row is None or acct is None:
+        return None
+    price, cash, eth, equity, weight, static_eq, hodl_eq, action, note = row
+    trades = store.db.execute('SELECT side, qty, avg_price, fee, weight_after FROM trades WHERE date = ? ORDER BY ts',
+                              (day.isoformat(),)).fetchall()
+    return {
+        'status': 'done', 'date': day, 'action': action, 'price': Decimal(price), 'cash': Decimal(cash),
+        'eth': Decimal(eth), 'equity': Decimal(equity), 'weight': Decimal(weight),
+        'static_equity': Decimal(static_eq), 'hodl_equity': Decimal(hodl_eq),
+        'initial': acct.initial, 'params': acct.params, 'note': [n for n in note.split('；') if n],
+        'trades': [{'side': s, 'qty': Decimal(q), 'avg_price': Decimal(p), 'fee': Decimal(f), 'weight_after': Decimal(w)}
+                   for s, q, p, f, w in trades],
+    }

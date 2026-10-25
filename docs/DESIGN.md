@@ -367,7 +367,7 @@ Crypto_Robot/
 - 每天 01:35 由 Windows 排程執行一次（`scripts/paper_rebalance.py`）；只在 01:30～07:30 動作，同一個台北日期只執行一次。研究時是台北 00:00 判斷、00:00 開盤成交，這裡改成 01:3x 判斷並立即成交。
 - 成交：用當下 MAX 盤口逐檔吃單，扣 taker 0.16%；數量依交易所精度捨去；低於最低下單量（0.003 ETH、250 TWD）就不調整。
 - 同時記錄兩個對照：同比例不再平衡、全部買 ETH（同樣的盤口與成本）。
-- 每天推送 Discord（`PAPER_WEBHOOK_URL`，沒有就用 `DISCORD_WEBHOOK_URL`），執行失敗推 🔴。暫停：建立 `state/paper_rebalance.paused`。
+- 01:35 執行時不推送；每天 08:30 由 `--report` 推送當天凌晨的結果到 Discord（`PAPER_WEBHOOK_URL`，沒有就用 `DISCORD_WEBHOOK_URL`）。凌晨沒有執行紀錄時推 🔴，附排程紀錄最後幾行（使用者 2026-10-26 決定）。暫停：建立 `state/paper_rebalance.paused`。
 - 一天只看一次價格，不需要 24 小時常駐，所以 v1 用排程腳本，不用第 2 節的常駐 Agent 架構；要做時段內盤中交易或接真單時再實作。
 - 2026-10-26 01:43 第一次執行：建倉買 0.038782 ETH，均價 77,381，手續費 4.8 元。
 - **考卷期（2026-10-26 使用者決定，只考一次，`state/research/holdout.json`）**：研究期未通過照規矩不該進考卷期，使用者決定仍以 `rebal-eth50-band10` 應考；考卷期已用掉，之後沒有乾淨的歷史資料可再檢驗。

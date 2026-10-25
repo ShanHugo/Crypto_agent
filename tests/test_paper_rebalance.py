@@ -7,7 +7,7 @@ from crypto_robot.agents.strategy.intraday import TAIPEI
 from crypto_robot.agents.strategy.rebalance import RebalanceParams
 from crypto_robot.core.models import Market, OrderBook
 from crypto_robot.paper.fills import market_buy, market_sell
-from crypto_robot.paper.rebalance_account import PaperStore, in_window, run_day
+from crypto_robot.paper.rebalance_account import PaperStore, day_report, in_window, run_day
 
 MARKET = Market('ethtwd', 'eth', 'twd', 6, 1, D('0.003'), D(250), True)
 P = RebalanceParams(D('0.5'), D('0.10'))
@@ -71,3 +71,14 @@ def test_too_small_and_dry_run(tmp_path):
     assert not s.has_snapshot(r['date'])
     with pytest.raises(ValueError):
         run_day(PaperStore(tmp_path / 'q.db'), book('77000'), MARKET, P, FEE, at(20), D(300))
+
+
+def test_day_report_matches_run_result(tmp_path):
+    s = PaperStore(tmp_path / 'p.db')
+    run_day(s, book('77000'), MARKET, P, FEE, at(20), D(6000))
+    r = run_day(s, book('120000'), MARKET, P, FEE, at(22), D(6000))
+    rep = day_report(s, r['date'])
+    for k in ('action', 'price', 'equity', 'weight', 'static_equity', 'hodl_equity', 'note'):
+        assert rep[k] == r[k]
+    assert rep['trades'] == r['trades'] and rep['trades'][0]['side'] == 'sell'
+    assert day_report(s, r['date'].replace(day=21)) is None
