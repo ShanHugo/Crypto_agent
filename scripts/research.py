@@ -1,7 +1,9 @@
 """研究工具：研究期比較全部規則；考卷期只考一次。
 
-    .venv\\Scripts\\python.exe scripts/research.py --stage dev
-    .venv\\Scripts\\python.exe scripts/research.py --stage holdout --variant ema20_50-vol-sl1-low
+    .venv\\Scripts\\python.exe scripts/research.py --family daily --stage dev
+    .venv\\Scripts\\python.exe scripts/research.py --family daily --stage holdout --variant trend-sma200-c1
+
+--family ema1h：第一輪（1h EMA 交叉，研究期全部未通過）；daily：第二輪（日 K）。
 
 先執行 scripts/fetch_bars.py 更新 K 線。考卷結果存在 state/research/holdout.json，之後執行只顯示當時的結果。
 """
@@ -17,9 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 
-from crypto_robot.lab import periods  # noqa: E402
-from crypto_robot.lab.research import dev_report, run_dev, run_holdout  # noqa: E402
-from crypto_robot.lab.variants import by_name  # noqa: E402
+from crypto_robot.lab import daily_research, daily_variants, periods, research, variants  # noqa: E402
 from crypto_robot.store.bars import BarStore  # noqa: E402
 
 HOLDOUT_FILE = ROOT / 'state' / 'research' / 'holdout.json'
@@ -37,6 +37,7 @@ def git_commit() -> str:
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
+    ap.add_argument('--family', choices=['ema1h', 'daily'], required=True)
     ap.add_argument('--stage', choices=['dev', 'holdout'], required=True)
     ap.add_argument('--variant', help='考卷期要考的規則名稱（見研究期報告）')
     ap.add_argument('--db', default=str(ROOT / 'data' / 'bars.db'))
@@ -47,10 +48,11 @@ def main() -> None:
     store.close()
     if not bars:
         sys.exit('快取沒有 K 線，先執行 scripts/fetch_bars.py')
+    lab, grid = (research, variants) if args.family == 'ema1h' else (daily_research, daily_variants)
 
     if args.stage == 'dev':
-        text = dev_report(run_dev(bars), datetime.now().strftime('%Y-%m-%d %H:%M'))
-        out = ROOT / 'reports' / f'research_dev_{datetime.now():%Y%m%d}.md'
+        text = lab.dev_report(lab.run_dev(bars), datetime.now().strftime('%Y-%m-%d %H:%M'))
+        out = ROOT / 'reports' / f'research_dev_{args.family}_{datetime.now():%Y%m%d}.md'
         out.parent.mkdir(exist_ok=True)
         out.write_text(text, encoding='utf-8')
         print(text)
@@ -65,11 +67,11 @@ def main() -> None:
         commit = git_commit()
         if commit.endswith('-dirty'):
             sys.exit('src/ 有未 commit 的修改；先 commit，考卷結果才能對應到確切的程式版本')
-        answer = input(f'考卷期只能考一次，確定用 {by_name(args.variant).name} 嗎？輸入 yes 繼續：')
+        answer = input(f'考卷期只能考一次，確定用 {grid.by_name(args.variant).name} 嗎？輸入 yes 繼續：')
         if answer.strip() != 'yes':
             sys.exit('已取消')
     end_ms = bars[-1].ts + periods.PERIOD_MIN * 60_000
-    record = run_holdout(bars, by_name(args.variant) if args.variant else None, end_ms, HOLDOUT_FILE, git_commit())
+    record = lab.run_holdout(bars, grid.by_name(args.variant) if args.variant else None, end_ms, HOLDOUT_FILE, git_commit())
     print(json.dumps(record, ensure_ascii=False, indent=2))
 
 

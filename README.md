@@ -25,8 +25,8 @@ py -3.12 -m venv .venv
 ## 研究
 
 ```bash
-.venv\Scripts\python.exe scripts/research.py --stage dev                      # 研究期 2021～2023：64 組規則，報告寫到 reports/
-.venv\Scripts\python.exe scripts/research.py --stage holdout --variant <名稱>   # 考卷期 2024 起：只考一次
+.venv\Scripts\python.exe scripts/research.py --family daily --stage dev                      # 研究期 2021～2023：全部規則，報告寫到 reports/
+.venv\Scripts\python.exe scripts/research.py --family daily --stage holdout --variant <名稱> # 考卷期 2024 起：只考一次
 ```
 規則組合與通過標準在 `src/crypto_robot/lab/variants.py`（看結果前訂定）。考卷結果存在 `state/research/holdout.json`，之後執行只顯示當時的結果。
 
