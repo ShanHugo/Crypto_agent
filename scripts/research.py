@@ -3,7 +3,8 @@
     .venv\\Scripts\\python.exe scripts/research.py --family daily --stage dev
     .venv\\Scripts\\python.exe scripts/research.py --family daily --stage holdout --variant trend-sma200-c1
 
---family ema1h：第一輪（1h EMA 交叉，研究期全部未通過）；daily：第二輪（日 K）。
+--family ema1h：第一輪（1h EMA 交叉）；daily：第二輪（日 K 趨勢／買低賣高）；兩輪研究期都全部未通過。
+--family rebalance：第三輪（ETH／台幣比例再平衡）。
 
 先執行 scripts/fetch_bars.py 更新 K 線。考卷結果存在 state/research/holdout.json，之後執行只顯示當時的結果。
 """
@@ -19,7 +20,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 
-from crypto_robot.lab import daily_research, daily_variants, periods, research, variants  # noqa: E402
+from crypto_robot.lab import (daily_research, daily_variants, periods, rebalance_research,  # noqa: E402
+                              rebalance_variants, research, variants)
 from crypto_robot.store.bars import BarStore  # noqa: E402
 
 HOLDOUT_FILE = ROOT / 'state' / 'research' / 'holdout.json'
@@ -37,7 +39,7 @@ def git_commit() -> str:
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
-    ap.add_argument('--family', choices=['ema1h', 'daily'], required=True)
+    ap.add_argument('--family', choices=['ema1h', 'daily', 'rebalance'], required=True)
     ap.add_argument('--stage', choices=['dev', 'holdout'], required=True)
     ap.add_argument('--variant', help='考卷期要考的規則名稱（見研究期報告）')
     ap.add_argument('--db', default=str(ROOT / 'data' / 'bars.db'))
@@ -48,7 +50,8 @@ def main() -> None:
     store.close()
     if not bars:
         sys.exit('快取沒有 K 線，先執行 scripts/fetch_bars.py')
-    lab, grid = (research, variants) if args.family == 'ema1h' else (daily_research, daily_variants)
+    lab, grid = {'ema1h': (research, variants), 'daily': (daily_research, daily_variants),
+                 'rebalance': (rebalance_research, rebalance_variants)}[args.family]
 
     if args.stage == 'dev':
         text = lab.dev_report(lab.run_dev(bars), datetime.now().strftime('%Y-%m-%d %H:%M'))
