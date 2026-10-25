@@ -85,6 +85,11 @@ def dev_report(rows: list[dict], generated: str) -> str:
             f'| {s.trades} | {s.win_rate:.0%} | {pct(s.avg_trade)} | {s.t_stat:.2f} | {s.exposure:.0%} | {s.cost_pct:.1%} '
             f'| {pct(r["halves"][0]["ret"])} | {pct(r["halves"][1]["ret"])} | {"；".join(r["fails"])} |')
     passed = [r['variant'] for r in rows if r['passed']]
+    held = [r for r in rows if r['stats'].open_at_end and r['stats'].exposure >= 0.8]
+    if held:
+        lines += ['', f'**注意**：有 {len(held)} 組持有時間 ≥ 80% 且期末仍未平倉。沒有死叉出場時，唯一的出場是停損；'
+                  '進場後價格沒有再跌回停損價，就會一直持有到期末，結果等於「從某天開始買進持有」，'
+                  '高度取決於第一筆的進場時點，不代表規則有選時能力。']
     lines += ['', '## 結論', '',
               (f'通過：{", ".join(f"`{p}`" for p in passed)}。從中選一組進考卷期（只考一次）。' if passed else
                '**沒有任何一組通過。** 依 Stock_Robot 的做法，不放寬標準去遷就結果；這組規則族不進考卷期。'),

@@ -37,7 +37,9 @@ def t_stat(xs: list[float]) -> float:
         return 0.0
     mean = sum(xs) / n
     sd = math.sqrt(sum((x - mean) ** 2 for x in xs) / (n - 1))
-    return 0.0 if sd == 0 else mean / (sd / math.sqrt(n))
+    if sd == 0:   # 每筆報酬完全相同（例如固定百分比停損）：t 無限大，方向同平均值
+        return 0.0 if mean == 0 else math.copysign(math.inf, mean)
+    return mean / (sd / math.sqrt(n))
 
 
 def stats(res: Result) -> Stats:

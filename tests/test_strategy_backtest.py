@@ -154,6 +154,7 @@ def test_buy_and_hold():
 def test_t_stat():
     assert t_stat([0.01]) == 0.0
     assert t_stat([0.01, 0.03]) == pytest.approx(2.0)
+    assert t_stat([-0.5] * 5) == float('-inf')       # 固定停損：每筆一樣
 
 
 # ---- 規則組合與通過標準 ----
