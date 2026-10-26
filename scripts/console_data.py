@@ -31,6 +31,8 @@ ACCOUNTS = {
 PAUSE_FILE = ROOT / 'state' / 'paper_rebalance.paused'
 HOLDOUT = ROOT / 'state' / 'research' / 'holdout.json'
 BARS = ROOT / 'data' / 'bars.db'
+LIVE_RECORDS = ROOT / 'state' / 'live' / 'balances.jsonl'   # 真實帳戶（唯讀）紀錄，含公開 IP，只在本機
+LIVE_IP = ROOT / 'state' / 'live' / 'public_ip.json'
 LOGS = {'paper_rebalance': ROOT / 'logs' / 'paper_rebalance.log', 'paper_report': ROOT / 'logs' / 'paper_report.log'}
 
 
@@ -115,6 +117,10 @@ def main() -> None:
     holdout = json.loads(HOLDOUT.read_text(encoding='utf-8')) if HOLDOUT.exists() else None
     env = dotenv_values(ROOT / '.env') if (ROOT / '.env').exists() else {}
     webhook_set = bool((env.get('PAPER_WEBHOOK_URL') or env.get('DISCORD_WEBHOOK_URL') or '').strip())
+    from crypto_robot.live import readonly
+    live_records = readonly.load(LIVE_RECORDS, 30)
+    keys_set = bool((env.get('MAX_API_KEY') or '').strip() and (env.get('MAX_API_SECRET') or '').strip())
+    ref = readonly.ref_ip(LIVE_IP)
     start = datetime.fromisoformat(main_acc['started_at']).date() if main_acc else None
     runs = hc.parse_runs(logs['paper_rebalance'])
     shadow_agent = (hc.agent('shadow', '影子帳戶：兩資產', hc.check_paper(now, snaps(shadow), runs, PAUSE_FILE.exists()))
@@ -127,6 +133,7 @@ def main() -> None:
                                                     holdout, last_bar(), now,
                                                     hc.stray_secret_files([p.name for p in ROOT.iterdir() if p.is_file()]))),
         shadow_agent,
+        hc.agent('live', '真實帳戶（唯讀）', hc.check_live(now, live_records, keys_set, ref is not None)),
     ]
     out = {
         'generated_at': now.isoformat(timespec='seconds'),
@@ -134,6 +141,8 @@ def main() -> None:
         'paused_info': PAUSE_FILE.read_text(encoding='utf-8').strip() if PAUSE_FILE.exists() else None,
         'main': main_acc,
         'shadow': shadow,
+        'live': {'keys_set': keys_set, 'ref_ip': ref, 'latest': live_records[-1] if live_records else None,
+                 'history': [{k: r.get(k) for k in ('date', 'time', 'source', 'ok', 'equity')} for r in live_records[-14:]]},
         'holdout': None if holdout is None else {k: holdout.get(k) for k in
                                                  ('variant', 'period', 'passed', 'rebalances', 'stats', 'static', 'hodl', 'halves', 'tested_at')},
         'health': {'agents': agents, 'overall': hc.overall(agents)},

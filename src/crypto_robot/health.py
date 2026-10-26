@@ -133,6 +133,34 @@ def check_report(now: datetime, runs: list[dict], webhook_set: bool, account_sta
     return out
 
 
+def check_live(now: datetime, records: list[dict], keys_set: bool, ref_ip_set: bool) -> list[Check]:
+    """真實帳戶（唯讀，真單第一階段）：凌晨有讀到餘額、金鑰可用、公開 IP 沒變。records：state/live/balances.jsonl，由舊到新。"""
+    if not keys_set:
+        return [Check('金鑰', 'ok', '.env 沒有 MAX 金鑰，不讀真實帳戶')]
+    out = [Check('白名單 IP', 'ok', '已記錄') if ref_ip_set else
+           Check('白名單 IP', 'yellow', '沒有白名單 IP 紀錄', '執行 scripts/live_check.py --accept-ip')]
+    if not records:
+        return out + [Check('真實餘額', 'ok', '還沒讀過；下一個凌晨 01:35 會讀')]
+    want = expected_date(now, PAPER_AT)
+    scheduled = [r for r in records if r['source'] == 'scheduled']
+    if not scheduled:
+        out.append(Check('今天凌晨讀取', 'ok', '排程還沒讀過；下一個凌晨 01:35 開始每天讀'))
+    elif not any(r['date'] == want.isoformat() for r in scheduled):
+        out.append(Check('今天凌晨讀取', 'yellow', f'{want} 凌晨沒有讀到真實餘額', '看模擬再平衡那一項；排程沒跑就讀不到'))
+    last = records[-1]
+    if last['ip_changed']:
+        out.append(Check('公開 IP', 'red', '公開 IP 和白名單不同（被擋時金鑰會失效）',
+                         '到 MAX 的 API 金鑰頁面把白名單改成新的 IP，再執行 scripts/live_check.py --accept-ip'))
+    else:
+        out.append(Check('公開 IP', 'ok', '和白名單相同'))
+    if not last['ok']:
+        out.append(Check('真實餘額', 'red', f'{last["date"]} {last["time"]} 讀取失敗：{last["error"]}',
+                         '401／2001 多半是金鑰錯誤或 IP 不在白名單；到 MAX 的 API 金鑰頁面確認'))
+    else:
+        out.append(Check('真實餘額', 'ok', f'{last["date"]} {last["time"]} 估值 {float(last["equity"]):,.0f} 元'))
+    return out
+
+
 SECRET_NAME = re.compile(r'api|key|secret|金鑰|密碼', re.I)
 
 

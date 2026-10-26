@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 
 import aiohttp  # noqa: E402
-from dotenv import load_dotenv  # noqa: E402
+from dotenv import dotenv_values, load_dotenv  # noqa: E402
 
 from crypto_robot.agents.strategy.rebalance_multi import MultiParams  # noqa: E402
 from crypto_robot.core.timeutil import TAIPEI, taipei_date  # noqa: E402
@@ -38,7 +38,8 @@ from crypto_robot.health import attempts_text, parse_runs  # noqa: E402
 from crypto_robot.lab.multi_variants import by_name  # noqa: E402
 from crypto_robot.notify.discord import send  # noqa: E402
 from crypto_robot.paper import multi_account  # noqa: E402
-from crypto_robot.paper.rebalance_account import in_window  # noqa: E402
+from crypto_robot.live import readonly  # noqa: E402
+from crypto_robot.paper.rebalance_account import in_window, mid_price  # noqa: E402
 
 INITIAL = Decimal(6000)
 TAKER_FEE = Decimal('0.0016')
@@ -52,6 +53,8 @@ SHADOW = {'key': 'shadow', 'label': '兩資產 band10（ETH 50%／台幣 50%）'
 OLD_DB = ROOT / 'state' / 'paper_rebalance.db'      # 2026-10-26 以前的兩資產主帳戶，轉換後只保留當紀錄
 PAUSE_FILE = ROOT / 'state' / 'paper_rebalance.paused'
 LOG_FILE = ROOT / 'logs' / 'paper_rebalance.log'
+LIVE_RECORDS = ROOT / 'state' / 'live' / 'balances.jsonl'    # 真單第一階段：唯讀的真實帳戶紀錄（本機，不進 git）
+LIVE_IP = ROOT / 'state' / 'live' / 'public_ip.json'
 ACTION_LABEL = {'init': '建倉', 'rebalance': '再平衡', 'hold': '不動作', 'too-small': '不動作（差額太小）'}
 ASSET_LABEL = {'eth': 'ETH', 'usdt': 'USDT', 'twd': '台幣'}
 
@@ -115,6 +118,15 @@ def shadow_line(sr: dict | None, main_since: Decimal | None) -> str:
             f'ETH {sr["weights"]["eth"]:.0%}')
 
 
+def live_line(today) -> str:
+    """08:30 報告裡真實帳戶（唯讀）的一行；沒設定金鑰就不顯示。不含 IP。"""
+    env = dotenv_values(ROOT / '.env')
+    if not (env.get('MAX_API_KEY') or '').strip():
+        return ''
+    recs = [r for r in readonly.load(LIVE_RECORDS, 10) if r['date'] == today.isoformat()]
+    return '\n' + (readonly.summary(recs[-1]) if recs else '🟡 真實帳戶（唯讀）：今天凌晨沒有讀到')
+
+
 def last_log_lines(n: int = 6) -> list[str]:
     """排程紀錄最後幾行，給「凌晨沒執行到」時判斷原因；網址一律遮掉。"""
     if not LOG_FILE.exists():
@@ -132,7 +144,7 @@ def morning_text() -> str:
         sr, sh_start = report_of(SHADOW, today)
         main_since = since(MAIN, sh_start, r['equity']) if sr is not None and sh_start else None
         return (message(r, MAIN['label']) + (f'\n🟡 重試後才成功：{retries}' if retries else '')
-                + '\n' + shadow_line(sr, main_since))
+                + '\n' + shadow_line(sr, main_since) + live_line(today))
     if PAUSE_FILE.exists():
         return f'⏸️ 模擬再平衡 {today}：已暫停（state/paper_rebalance.paused），凌晨沒有執行'
     head = f'🔴 模擬再平衡 {today}：01:30～08:00 都沒有成功' + (f'（{retries}）' if retries else '（沒有執行紀錄）')
@@ -212,7 +224,24 @@ async def run(dry_run: bool, ignore_window: bool) -> int:
             code = 1
             continue
         print(f'{acc["label"]}：{r["date"]} 已經執行過' if r['status'] == 'already' else message(r, acc['label']))
+    if not dry_run:
+        await live_read({a: mid_price(books[m]) for a, m in MARKETS.items()}, now)
     return code
+
+
+async def live_read(prices: dict, server_ms: int) -> None:
+    """真單第一階段（唯讀）：每天讀一次真實餘額與公開 IP。失敗只記錄（08:30 報告與健康檢查會顯示），不影響模擬帳戶。"""
+    env = dotenv_values(ROOT / '.env')
+    key, secret = (env.get('MAX_API_KEY') or '').strip(), (env.get('MAX_API_SECRET') or '').strip()
+    if not key or not secret:
+        return
+    today = datetime.now(TAIPEI).date().isoformat()
+    if any(r['date'] == today and r['ok'] and r['source'] == 'scheduled' for r in readonly.load(LIVE_RECORDS, 10)):
+        return
+    async with aiohttp.ClientSession() as session:
+        rec = await readonly.read_snapshot(session, key, secret, server_ms, prices, readonly.ref_ip(LIVE_IP))
+    readonly.append(LIVE_RECORDS, rec)
+    print(readonly.summary(rec))
 
 
 async def report(no_send: bool) -> int:
