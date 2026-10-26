@@ -82,3 +82,41 @@ class MaxPrivateClient:
 
     async def open_orders(self, market: str) -> list[dict]:
         return await self._get('/api/v3/wallet/spot/orders/open', {'market': market})
+
+
+class MaxTradingClient(MaxPrivateClient):
+    """會下單的版本（真單第二階段）。只有真單執行器（live/executor.py）使用；唯讀流程一律用 MaxPrivateClient。
+    沒有提領方法。POST／DELETE 的參數放 body，簽章內容同樣是參數＋nonce＋path。"""
+
+    def __repr__(self) -> str:
+        return 'MaxTradingClient(<keys hidden>)'
+
+    async def _send(self, method: str, path: str, params: dict):
+        q = {'nonce': self._nonce(), **params}
+        payload, signature = sign(self._secret, path, q)
+        headers = {'X-MAX-ACCESSKEY': self._key, 'X-MAX-PAYLOAD': payload, 'X-MAX-SIGNATURE': signature,
+                   'Content-Type': 'application/json'}
+        async with self._session.request(method, f'{self._base}{path}', data=json.dumps(q), headers=headers,
+                                         timeout=aiohttp.ClientTimeout(total=20)) as resp:
+            text = await resp.text()
+            if resp.status not in (200, 201):
+                raise MaxApiError(resp.status, text, path)
+            return loads(text)
+
+    async def create_order(self, market: str, side: str, volume: Decimal, *, ord_type: str, client_oid: str,
+                           price: Decimal | None = None) -> dict:
+        """送出訂單。成功只代表交易所已受理，實際成交要用 order(client_oid) 查。"""
+        if side not in ('buy', 'sell') or ord_type not in ('limit', 'ioc_limit', 'market'):
+            raise ValueError('不支援的 side 或 ord_type')
+        if len(client_oid) > 36:
+            raise ValueError('client_oid 最長 36 字元')
+        params = {'market': market, 'side': side, 'volume': str(volume), 'ord_type': ord_type, 'client_oid': client_oid}
+        if price is not None:
+            params['price'] = str(price)
+        return await self._send('POST', '/api/v3/wallet/spot/order', params)
+
+    async def order(self, client_oid: str) -> dict:
+        return await self._get('/api/v3/order', {'client_oid': client_oid})
+
+    async def cancel(self, client_oid: str) -> dict:
+        return await self._send('DELETE', '/api/v3/order', {'client_oid': client_oid})

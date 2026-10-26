@@ -66,3 +66,16 @@ def test_check_live_levels():
     assert missed['今天凌晨讀取'] == 'yellow'
     bad = lv(hc.check_live(now, [rec('2026-10-28', ok=False, ip_changed=True)], True, True))
     assert bad['公開 IP'] == 'red' and bad['真實餘額'] == 'red'
+
+
+def test_check_live_trade_levels():
+    now = datetime(2026, 10, 28, 9, 0)
+    assert lv(hc.check_live_trade(now, False, None, [])) == {'真單開關': 'ok'}
+    assert lv(hc.check_live_trade(now, True, None, []))['今天的真單'] == 'red'
+    assert lv(hc.check_live_trade(datetime(2026, 10, 28, 3, 0), True, None, []))['今天的真單'] == 'yellow'
+    assert lv(hc.check_live_trade(now, True, {'status': 'blocked', 'note': 'x'}, []))['今天的真單'] == 'red'
+    assert lv(hc.check_live_trade(now, True, {'status': 'running', 'note': ''}, []))['今天的真單'] == 'red'
+    good = lv(hc.check_live_trade(now, True, {'status': 'done', 'note': ''}, [{'status': 'done', 'side': 'buy', 'asset': 'eth', 'error': None}]))
+    assert set(good.values()) == {'ok'}
+    bad = lv(hc.check_live_trade(now, True, {'status': 'done', 'note': ''}, [{'status': 'unknown', 'side': 'buy', 'asset': 'eth', 'error': 'x'}]))
+    assert bad['訂單'] == 'red'

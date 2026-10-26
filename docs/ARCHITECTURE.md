@@ -11,6 +11,7 @@
 | 08:30 沒收到推送 | 操作台「虛擬貨幣」→ 排程 `paper_report`、`logs\paper_report.log`、`.env` 的 webhook | 5 |
 | 操作台燈號 🟡／🔴 | 該項檢查的「→」建議；檢查邏輯在 `src/crypto_robot/health.py` | 5 |
 | 帳戶數字怪（成交價、比例、權益） | `paper_rebalance.py --status`、`state\paper_main.db`、`paper/multi_account.py`、`paper/fills.py` | 4、6 |
+| 真單擋下、沒跑完、訂單 unknown | `scripts/live_trade.py --status`／`--plan`、`live/executor.py`、`state\live\live.db` | 4、5 |
 | 真實帳戶（唯讀）讀不到、IP 變了 | `scripts/live_check.py`（手動讀、`--accept-ip`）、`live/readonly.py`、`state\live\` | 4、5 |
 | 影子帳戶（兩資產）怪 | `state\shadow_rebal2.db`、`paper/multi_account.py`；設定在 `paper_rebalance.py` 的 `SHADOW` | 4 |
 | 想改規則參數、資金、排程時間、通知內容 | `CLAUDE.md` 的「要改什麼，改哪裡」 | 6 |
@@ -100,6 +101,7 @@ flowchart LR
 | 模擬再平衡 | `scripts/run_scheduled.cmd paper_rebalance` → `paper_rebalance.py` | `paper/multi_account.py`、`paper/fills.py`、`agents/strategy/rebalance_multi.py`、`exchange/max/public.py` | MAX 公開 API（ethtwd、usdttwd）、`state/paper_main.db`、暫停檔 | db、`logs\paper_rebalance.log` | 失敗每小時重試到 07:35、時段外不動作、同一天不重複、低於最低下單量不調整、深度不足只部分成交（記在備註） | 今天凌晨有執行（重試中／重試後成功為 🟡）、最近 7 天沒漏跑、上次結束代碼 0、備註 |
 | 早上報告 | `run_scheduled.cmd paper_report paper_rebalance --report` | `paper_rebalance.py` 的 `morning_text`、`notify/discord.py` | db、`logs\paper_rebalance.log`、`.env` | Discord、`logs\paper_report.log` | Discord 失敗只寫紀錄，不中斷 | webhook 已設定、今天 08:25 後有執行且結束代碼 0 |
 | 影子帳戶：兩資產（同一個排程） | `paper_rebalance.py` 在主帳戶之後執行 | `paper/multi_account.py`、`agents/strategy/rebalance_multi.py` | MAX 公開 API（ethtwd）、`state/shadow_rebal2.db` | `state/shadow_rebal2.db` | 失敗不影響主帳戶，回傳結束代碼 1 讓下一小時重試；同一天不重複 | 和主帳戶相同的「今天凌晨執行」等檢查 |
+| 真單（同一個排程，`.env` 開啟才執行） | `paper_rebalance.py` 在唯讀讀取之後執行 | `live/executor.py`、`exchange/max/private.py` 的 `MaxTradingClient` | MAX 私有 API、`.env`（LIVE_TRADING、LIVE_CONFIRM、LIVE_CAPITAL_CAP） | `state/live/live.db` | 安全檢查不過就整天不下單；同一天只做一次；結果不明不重送 | 今天有執行、沒被擋下、沒有 rejected／unknown 訂單 |
 | 真實帳戶（唯讀，同一個排程） | `paper_rebalance.py` 在兩個模擬帳戶之後執行 | `live/readonly.py`、`exchange/max/private.py`（只有查詢方法） | `.env` 的 MAX 金鑰、MAX 私有 API、公開 IP | `state/live/balances.jsonl` | 一天只讀一次；失敗只記錄，不影響模擬帳戶 | 今天凌晨有讀到、公開 IP 和白名單相同、讀取成功 |
 | 系統與安全（不是排程） | 操作台開分頁時 | `health.py` 的 `check_system` | git、logs、考卷檔、K 線快取 | — | — | `.env` 沒進 git、紀錄檔沒有 webhook |
 
@@ -143,6 +145,8 @@ flowchart TD
 | 「差額低於交易所最低下單量」 | 帳戶小、偏離剛過門檻 | 不用處理 |
 | 「盤口深度不足，只部分成交」 | 凌晨掛單少 | 不用處理；常發生再討論 |
 | 結束代碼不是 0、出現 Traceback | 程式或 MAX API 回應改變 | 交給開發者 |
+| 真單「安全檢查擋下」 | 系統維護、有掛單凍結、超過階段上限、價格跳動 > 20%、單筆 > 60% | 依原因處理；擋下時帳戶不會動。要加碼先調高 `LIVE_CAPITAL_CAP` |
+| 真單訂單 unknown | 送出後網路中斷，查不到結果 | 到 MAX 網頁確認有沒有成交，再交給開發者 |
 | 「公開 IP 和白名單不同」「讀取失敗：HTTP 401」 | 家用網路 IP 變了，金鑰被 MAX 白名單擋下 | 到 MAX 的 API 金鑰頁面把白名單改成新 IP，再執行 `scripts\live_check.py --accept-ip` |
 | 「專案資料夾沒有金鑰檔」🔴 | 有人把金鑰另存成文字檔放在專案資料夾 | 金鑰只放 `.env`，刪掉那個檔案 |
 | 「現在不在 01:30～08:00 交易時段」 | 排程時間被改或補跑太晚 | 檢查排程時間 |
@@ -165,6 +169,7 @@ flowchart TD
 |---|---|---|
 | `state/paper_main.db` | 主模擬帳戶（三資產）的帳戶、交易、每日快照 | **不能**（前瞻紀錄） |
 | `state/shadow_rebal2.db` | 影子帳戶（兩資產）的帳戶、交易、每日快照 | **不能**（前瞻紀錄） |
+| `state/live/live.db` | 真單每天的執行紀錄與訂單 | **不能**（交易紀錄；實際以 MAX 帳戶為準） |
 | `state/live/balances.jsonl`、`state/live/public_ip.json` | 真實帳戶（唯讀）每日紀錄、白名單 IP（含公開 IP，只在本機） | 能（重新讀）；IP 用 `live_check.py --accept-ip` 重設 |
 | `state/paper_rebalance.db` | 2026-10-26 以前的兩資產主帳戶（已轉到 paper_main.db），只留作紀錄 | 不再寫入 |
 | `state/research/holdout.json` | 考卷期結果（只考一次） | **不能** |
@@ -180,7 +185,7 @@ flowchart TD
 
 ## 8. 安全邊界
 
-- MAX 金鑰目前**只開查詢**（營運者 2026-10-26 確認沒開交易與提領），程式的私有 API 只有查詢方法，**不可能下真單**；真單第二階段才會加開交易權限（仍禁止提領）。
+- MAX 金鑰開了查詢＋交易、**沒開提領**（營運者 2026-10-26 確認）。下單只在 `.env` 開啟真單時由 `live/executor.py` 進行，程式沒有任何提領方法。
 - 金鑰只放 `.env`；commit 一律明確列出檔名，內容不能有金鑰、webhook、公開 IP 或其他個資。
 - repo 是公開的：`.env`、`state/` 等不進 git；健康檢查會抓 `.env` 被追蹤、紀錄檔出現 webhook。
 - 操作台只聽 127.0.0.1（手機經 Tailscale），虛擬貨幣分頁只讀，唯一會寫的是暫停檔。

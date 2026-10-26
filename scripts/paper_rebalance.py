@@ -127,6 +127,34 @@ def live_line(today) -> str:
     return '\n' + (readonly.summary(recs[-1]) if recs else '🟡 真實帳戶（唯讀）：今天凌晨沒有讀到')
 
 
+def live_run_line(today) -> str:
+    """08:30 報告裡真單的一行（從 state/live/live.db 讀）；真單沒開啟就不顯示。"""
+    import live_trade as lt
+    if not lt.enabled(dotenv_values(ROOT / '.env')):
+        return ''
+    from crypto_robot.live import executor
+    if not lt.LIVE_DB.exists():
+        return '\n🔴 真單：今天沒有執行紀錄'
+    st = executor.LiveStore(lt.LIVE_DB)
+    try:
+        run, orders = st.run(today), st.orders(today)
+    finally:
+        st.close()
+    if run is None:
+        return '\n🔴 真單：今天沒有執行紀錄'
+    if run['status'] == 'blocked':
+        return f'\n🔴 真單：今天沒有下單（{run["note"]}）'
+    if run['status'] == 'hold':
+        return f'\n🤖 真單：不動作，權益 {Decimal(run["equity_before"]):,.0f} 元'
+    if run['status'] == 'running':
+        return '\n🔴 真單：送單到一半沒有跑完，請看 live_trade.py --status'
+    bad = [o for o in orders if o['status'] in ('rejected', 'unknown')]
+    parts = [f'{"賣" if o["side"] == "sell" else "買"} {o["asset"].upper()} {o["executed"] or 0}／{o["volume"]}（{o["status"]}）' for o in orders]
+    eq_after = f' → {Decimal(run["equity_after"]):,.0f}' if run['equity_after'] else ''
+    return (f'\n{"🔴" if bad else "🤖"} 真單：{"、".join(parts) or run["note"]}；'
+            f'權益 {Decimal(run["equity_before"]):,.0f}{eq_after} 元')
+
+
 def last_log_lines(n: int = 6) -> list[str]:
     """排程紀錄最後幾行，給「凌晨沒執行到」時判斷原因；網址一律遮掉。"""
     if not LOG_FILE.exists():
@@ -144,7 +172,7 @@ def morning_text() -> str:
         sr, sh_start = report_of(SHADOW, today)
         main_since = since(MAIN, sh_start, r['equity']) if sr is not None and sh_start else None
         return (message(r, MAIN['label']) + (f'\n🟡 重試後才成功：{retries}' if retries else '')
-                + '\n' + shadow_line(sr, main_since) + live_line(today))
+                + '\n' + shadow_line(sr, main_since) + live_line(today) + live_run_line(today))
     if PAUSE_FILE.exists():
         return f'⏸️ 模擬再平衡 {today}：已暫停（state/paper_rebalance.paused），凌晨沒有執行'
     head = f'🔴 模擬再平衡 {today}：01:30～08:00 都沒有成功' + (f'（{retries}）' if retries else '（沒有執行紀錄）')
@@ -226,7 +254,56 @@ async def run(dry_run: bool, ignore_window: bool) -> int:
         print(f'{acc["label"]}：{r["date"]} 已經執行過' if r['status'] == 'already' else message(r, acc['label']))
     if not dry_run:
         await live_read({a: mid_price(books[m]) for a, m in MARKETS.items()}, now)
+        try:
+            await live_trade(now)
+        except Exception as exc:       # noqa: BLE001
+            print(f'🔴 真單執行失敗：{type(exc).__name__}: {exc}')
+            code = 1
     return code
+
+
+async def live_trade(server_ms: int) -> None:
+    """真單（第二階段）：.env 有 LIVE_TRADING=1 與 LIVE_CONFIRM=I_UNDERSTAND 才執行；規則和主模擬帳戶相同。"""
+    import live_trade as lt          # scripts/live_trade.py：設定與開關放在同一個地方
+    env = dotenv_values(ROOT / '.env')
+    if not lt.enabled(env):
+        return
+    from crypto_robot.exchange.max.private import MaxTradingClient
+    from crypto_robot.live import executor
+    cfg = lt.config(env)
+    async with aiohttp.ClientSession() as session:
+        pub = MaxPublicClient(session)
+        markets_all = await pub.markets()
+        markets = {a: markets_all[m] for a, m in MARKETS.items()}
+        prices = {a: mid_price(await pub.order_book(m, 20)) for a, m in MARKETS.items()}      # 下單前重新抓盤口
+        online = await readonly.system_online(session)
+        client = MaxTradingClient(session, (env.get('MAX_API_KEY') or '').strip(), (env.get('MAX_API_SECRET') or '').strip())
+        client.sync_clock(await pub.server_time_ms())
+        store = executor.LiveStore(lt.LIVE_DB)
+        try:
+            today = datetime.now(TAIPEI).date().isoformat()
+            res = await executor.run_live(client, store, prices, markets, cfg, server_ms, online=online,
+                                          prev_prices=readonly.previous_prices(readonly.load(LIVE_RECORDS, 30), today))
+        finally:
+            store.close()
+    print(live_trade_line(res))
+
+
+def live_trade_line(res: dict) -> str:
+    s = res['status']
+    if s == 'already':
+        return '🤖 真單：今天已經執行過'
+    if s == 'blocked':
+        return f'🔴 真單：今天沒有下單（{res["reason"]}）'
+    if s == 'reconciled':
+        return '🟡 真單：今天之前送過單但沒跑完，已對帳、沒有送新單'
+    if s == 'hold':
+        return f'🤖 真單：不動作，權益 {res["equity"]:,.0f} 元（{"；".join(res["notes"]) or "沒有偏離門檻"}）'
+    parts = [f'{"賣" if r["side"] == "sell" else "買"} {r["asset"].upper()} {r.get("executed") or 0}'
+             + (f' @ {Decimal(str(r["avg_price"])):,.3f}' if r.get('avg_price') and Decimal(str(r['avg_price'])) else '')
+             + f'（{r["status"]}）' for r in res['results']]
+    head = '🔴' if res['errors'] else '🤖'
+    return f'{head} 真單：再平衡 {"、".join(parts)}；權益 {res["equity"]:,.0f} → {res["equity_after"]:,.0f} 元'
 
 
 async def live_read(prices: dict, server_ms: int) -> None:

@@ -11,7 +11,7 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 - 排程：01:35 執行 `paper_rebalance`（不推送，失敗每小時重試到 07:35）、08:30 執行 `paper_report`（推送 Discord）。
 - **影子帳戶**（同一個排程、同樣 6,000 元，只記錄）：原本的兩資產 `rebal-eth50-band10`（ETH 50%、台幣 50%），2026-10-27 凌晨重新建倉；狀態在 `state/shadow_rebal2.db`。
 - 五輪研究共 122 組：只有比例再平衡留下。**考卷期（2024-01-01 起）已用掉**，結果在 `state/research/holdout.json`。
-- **真單**：2026-10-26 使用者決定分階段上線（第一階段 6,000 元），計畫與 MAX 私有 API 查核在 `docs/DESIGN.md` 6.5。階段 1（唯讀）已完成：金鑰只開查詢，每天 01:35 讀真實餘額與公開 IP（`live/readonly.py`、`scripts/live_check.py`）。階段 2 要等使用者入金並加開交易權限；金鑰絕不經過對話。
+- **真單**：2026-10-26 使用者決定分階段上線（第一階段 6,000 元），計畫與 MAX 私有 API 查核在 `docs/DESIGN.md` 6.5。階段 2 程式完成：使用者已入金 6,000 元、金鑰開了交易（沒開提領）。真單由 `.env` 的 `LIVE_TRADING=1`＋`LIVE_CONFIRM=I_UNDERSTAND` 開啟（使用者自己設），每天 01:35 執行；預覽用 `scripts/live_trade.py --plan`。跑滿 2 週沒有 🔴 才討論加碼；金鑰絕不經過對話。
 
 ## 不可違反的規則
 
@@ -35,6 +35,7 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 | 排程時間 | `scripts/register_tasks.ps1` 的 `$tasks`（改完請使用者以系統管理員重跑） |
 | MAX 公開 API | `src/crypto_robot/exchange/max/public.py`（端點已實測，見 DESIGN.md 第 1 節） |
 | 操作台「虛擬貨幣」分頁的資料、Agent 健康檢查 | `scripts/console_data.py`（只讀 JSON）、`src/crypto_robot/health.py`；畫面與 API 在 Stock_Robot 的 `src/web/templates/console.html`、`src/web/console.py`（`/api/crypto`） |
+| 真單執行與安全檢查 | `src/crypto_robot/live/executor.py`（`check_guards`、`plan_orders`、`run_live`）、`scripts/live_trade.py`（開關、設定、`--plan`）；紀錄 `state/live/live.db` |
 | 真實帳戶（唯讀）、IP 變動 | `src/crypto_robot/live/readonly.py`、`exchange/max/private.py`（只有查詢方法）、`scripts/live_check.py`（`--accept-ip`）；紀錄在 `state/live/`（含公開 IP，絕不進 git） |
 | 研究 | `src/crypto_robot/lab/`（`rebalance_variants.py` 是事先訂定的組合與標準，看過結果後不得修改） |
 

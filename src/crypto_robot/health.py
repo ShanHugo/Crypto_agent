@@ -161,6 +161,33 @@ def check_live(now: datetime, records: list[dict], keys_set: bool, ref_ip_set: b
     return out
 
 
+def check_live_trade(now: datetime, enabled: bool, run: dict | None, orders: list[dict]) -> list[Check]:
+    """真單（第二階段）。run／orders：expected_date 那一天的紀錄（state/live/live.db）。"""
+    if not enabled:
+        return [Check('真單開關', 'ok', '未開啟（.env 的 LIVE_TRADING）')]
+    want = expected_date(now, PAPER_AT)
+    out = [Check('真單開關', 'ok', '開啟')]
+    if run is None:
+        if now.date() == want and (now.hour, now.minute) < WINDOW_END:
+            return out + [Check('今天的真單', 'yellow', f'{want} 尚未執行，時段內每小時會重試', '不用處理')]
+        return out + [Check('今天的真單', 'red', f'{want} 沒有執行紀錄', '看模擬再平衡那一項與 logs/paper_rebalance.log')]
+    st = run['status']
+    if st == 'blocked':
+        out.append(Check('今天的真單', 'red', f'安全檢查擋下，沒有下單：{run["note"]}',
+                         '依原因處理；不是已知狀況就交給開發者。擋下時帳戶不會動。'))
+    elif st == 'running':
+        out.append(Check('今天的真單', 'red', '送單到一半沒有跑完', '執行 scripts/live_trade.py --status，交給開發者對帳'))
+    elif st == 'reconciled':
+        out.append(Check('今天的真單', 'yellow', '重試時發現已送過單，只對帳、沒有送新單', '看 live_trade.py --status 確認成交'))
+    else:
+        out.append(Check('今天的真單', 'ok', '不動作' if st == 'hold' else f'完成，{len(orders)} 筆訂單'))
+    bad = [o for o in orders if o['status'] in ('rejected', 'unknown')]
+    if bad:
+        out.append(Check('訂單', 'red', '；'.join(f'{o["side"]} {o["asset"].upper()} {o["status"]}：{o["error"] or ""}' for o in bad),
+                         'unknown 代表送出後查不到結果：到 MAX 網頁確認有沒有成交，再交給開發者'))
+    return out
+
+
 SECRET_NAME = re.compile(r'api|key|secret|金鑰|密碼', re.I)
 
 

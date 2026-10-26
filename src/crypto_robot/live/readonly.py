@@ -97,3 +97,23 @@ def ref_ip(path: Path) -> str | None:
 def set_ref_ip(path: Path, ip: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({'ip': ip, 'set_at': datetime.now(TAIPEI).isoformat(timespec='seconds')}), encoding='utf-8')
+
+
+STATUS_URL = 'https://status-api-max.maicoin.com/api/status/max-api'
+
+
+async def system_online(session: aiohttp.ClientSession) -> bool:
+    """MAX 官方系統狀態 API：online 才能下單；查不到一律當作不能下單。"""
+    try:
+        async with session.get(STATUS_URL, timeout=aiohttp.ClientTimeout(total=10)) as r:
+            return r.status == 200 and (await r.json()).get('status') == 'online'
+    except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
+        return False
+
+
+def previous_prices(records: list[dict], today: str) -> dict[str, Decimal] | None:
+    """今天以前最後一筆成功紀錄的價格（給「價格跳動」檢查用）。"""
+    for r in reversed(records):
+        if r['date'] < today and r.get('ok') and r.get('prices'):
+            return {k: Decimal(v) for k, v in r['prices'].items()}
+    return None

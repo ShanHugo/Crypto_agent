@@ -33,6 +33,7 @@ HOLDOUT = ROOT / 'state' / 'research' / 'holdout.json'
 BARS = ROOT / 'data' / 'bars.db'
 LIVE_RECORDS = ROOT / 'state' / 'live' / 'balances.jsonl'   # 真實帳戶（唯讀）紀錄，含公開 IP，只在本機
 LIVE_IP = ROOT / 'state' / 'live' / 'public_ip.json'
+LIVE_DB = ROOT / 'state' / 'live' / 'live.db'
 LOGS = {'paper_rebalance': ROOT / 'logs' / 'paper_rebalance.log', 'paper_report': ROOT / 'logs' / 'paper_report.log'}
 
 
@@ -121,6 +122,16 @@ def main() -> None:
     live_records = readonly.load(LIVE_RECORDS, 30)
     keys_set = bool((env.get('MAX_API_KEY') or '').strip() and (env.get('MAX_API_SECRET') or '').strip())
     ref = readonly.ref_ip(LIVE_IP)
+    live_on = (env.get('LIVE_TRADING') or '').strip() == '1' and (env.get('LIVE_CONFIRM') or '').strip() == 'I_UNDERSTAND'
+    want = hc.expected_date(now, hc.PAPER_AT)
+    live_runs, live_orders, run_want, orders_want = [], [], None, []
+    if LIVE_DB.exists():
+        from crypto_robot.live.executor import LiveStore
+        ls = LiveStore(LIVE_DB)
+        try:
+            live_runs, live_orders, run_want, orders_want = ls.runs(14), ls.orders()[-30:], ls.run(want), ls.orders(want)
+        finally:
+            ls.close()
     start = datetime.fromisoformat(main_acc['started_at']).date() if main_acc else None
     runs = hc.parse_runs(logs['paper_rebalance'])
     shadow_agent = (hc.agent('shadow', '影子帳戶：兩資產', hc.check_paper(now, snaps(shadow), runs, PAUSE_FILE.exists()))
@@ -133,6 +144,7 @@ def main() -> None:
                                                     holdout, last_bar(), now,
                                                     hc.stray_secret_files([p.name for p in ROOT.iterdir() if p.is_file()]))),
         shadow_agent,
+        hc.agent('live_trade', '真單', hc.check_live_trade(now, live_on, run_want, orders_want)),
         hc.agent('live', '真實帳戶（唯讀）', hc.check_live(now, live_records, keys_set, ref is not None)),
     ]
     out = {
@@ -141,6 +153,7 @@ def main() -> None:
         'paused_info': PAUSE_FILE.read_text(encoding='utf-8').strip() if PAUSE_FILE.exists() else None,
         'main': main_acc,
         'shadow': shadow,
+        'live_trade': {'enabled': live_on, 'cap': (env.get('LIVE_CAPITAL_CAP') or '9000').strip(), 'runs': live_runs, 'orders': live_orders},
         'live': {'keys_set': keys_set, 'ref_ip': ref, 'latest': live_records[-1] if live_records else None,
                  'history': [{k: r.get(k) for k in ('date', 'time', 'source', 'ok', 'equity')} for r in live_records[-14:]]},
         'holdout': None if holdout is None else {k: holdout.get(k) for k in
