@@ -3,6 +3,7 @@
 個人自用、只操作自己帳戶。延續 Stock_Robot 的做法：**先研究、再模擬、事先訂好照抄標準，達標才考慮真錢**。
 
 - 目前狀態：四輪研究在研究期都未通過；**比例再平衡模擬帳戶**（6,000 台幣、不下真單）2026-10-26 開始運作。進度見 [docs/DESIGN.md](docs/DESIGN.md) 第 8 節。
+- 維運（Agent 分工、出錯流程圖、先看哪裡）：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - 設計與規格：[docs/DESIGN.md](docs/DESIGN.md)（第 0 節列出與原始規格不同的地方，已確認）。
 - 預設 `DRY_RUN=1`（模擬帳戶），不會下真單。目前只用到 MAX 公開 API，**不需要 API Key**。
 
