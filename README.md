@@ -26,6 +26,7 @@ py -3.12 -m venv .venv
 ## 比例再平衡模擬帳戶
 
 ETH 目標 50%，偏離 10 個百分點就調回；用 MAX 當下盤口模擬成交，不下真單。每天 01:35 由排程執行、失敗就每小時重試到 07:35（只在 01:30～08:00 動作），08:30 推送當天凌晨的結果到 Discord。
+同一個排程也跑一個**影子帳戶**（ETH 50%＋USDT 37.5%＋台幣 12.5% 三資產再平衡，同樣 6,000 元），只記錄、和主帳戶比較。
 ```bash
 .venv\Scripts\python.exe scripts/paper_rebalance.py --dry-run   # 只印出
 .venv\Scripts\python.exe scripts/paper_rebalance.py --status    # 帳戶走勢與交易紀錄

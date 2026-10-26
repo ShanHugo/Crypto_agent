@@ -11,6 +11,7 @@
 | 08:30 沒收到推送 | 操作台「虛擬貨幣」→ 排程 `paper_report`、`logs\paper_report.log`、`.env` 的 webhook | 5 |
 | 操作台燈號 🟡／🔴 | 該項檢查的「→」建議；檢查邏輯在 `src/crypto_robot/health.py` | 5 |
 | 帳戶數字怪（成交價、比例、權益） | `state\paper_rebalance.db`（`--status`）、`paper/rebalance_account.py`、`paper/fills.py` | 4、6 |
+| 影子帳戶（三資產）怪 | `state\shadow_rebal3.db`、`paper/multi_account.py`；設定在 `paper_rebalance.py` 的 `SHADOW_*` 與 `lab/multi_variants.py` 的 `SHADOW` | 4 |
 | 想改規則參數、資金、排程時間、通知內容 | `CLAUDE.md` 的「要改什麼，改哪裡」 | 6 |
 | 操作台分頁壞掉 | `scripts/console_data.py`（資料）；Stock_Robot `src/web/console.py` 的 `/api/crypto`、`templates/console.html` 的 `loadCrypto` | 2、6 |
 | MAX API 回應改了 | `exchange/max/public.py`；端點查核在 DESIGN.md 第 1 節 | 2 |
@@ -54,9 +55,12 @@
 
 ```mermaid
 flowchart LR
-  MAX[MAX 公開 API<br/>市場資訊・盤口・伺服器時間] --> PR
+  MAX[MAX 公開 API<br/>ETH/TWD・USDT/TWD 盤口・伺服器時間] --> PR
   subgraph CR[Crypto_Robot（這個專案）]
     PR[paper_rebalance<br/>01:35 判斷＋模擬成交<br/>失敗每小時重試到 07:35] --> DB[(state/paper_rebalance.db<br/>帳戶・交易・每日快照)]
+    PR --> SDB[(state/shadow_rebal3.db<br/>影子：ETH＋USDT＋台幣)]
+    SDB --> RP
+    SDB --> CD
     DB --> RP[paper_report<br/>08:30 讀當天結果]
     DB --> CD[scripts/console_data.py<br/>只讀 JSON]
     HC[health.py<br/>健康檢查] --> CD
@@ -94,6 +98,7 @@ flowchart LR
 |---|---|---|---|---|---|---|
 | 模擬再平衡 | `scripts/run_scheduled.cmd paper_rebalance` → `paper_rebalance.py` | `paper/rebalance_account.py`、`paper/fills.py`、`agents/strategy/rebalance.py`、`exchange/max/public.py` | MAX 公開 API、db、暫停檔 | db、`logs\paper_rebalance.log` | 失敗每小時重試到 07:35、時段外不動作、同一天不重複、低於最低下單量不調整、深度不足只部分成交（記在備註） | 今天凌晨有執行（重試中／重試後成功為 🟡）、最近 7 天沒漏跑、上次結束代碼 0、備註 |
 | 早上報告 | `run_scheduled.cmd paper_report paper_rebalance --report` | `paper_rebalance.py` 的 `morning_text`、`notify/discord.py` | db、`logs\paper_rebalance.log`、`.env` | Discord、`logs\paper_report.log` | Discord 失敗只寫紀錄，不中斷 | webhook 已設定、今天 08:25 後有執行且結束代碼 0 |
+| 影子帳戶：三資產（同一個排程） | `paper_rebalance.py` 在主帳戶之後執行 | `paper/multi_account.py`、`agents/strategy/rebalance_multi.py` | MAX 公開 API（ethtwd、usdttwd）、`state/shadow_rebal3.db` | `state/shadow_rebal3.db` | 失敗不影響主帳戶，回傳結束代碼 1 讓下一小時重試；同一天不重複 | 和主帳戶相同的「今天凌晨執行」等檢查 |
 | 系統與安全（不是排程） | 操作台開分頁時 | `health.py` 的 `check_system` | git、logs、考卷檔、K 線快取 | — | — | `.env` 沒進 git、紀錄檔沒有 webhook |
 
 ---
@@ -155,6 +160,7 @@ flowchart TD
 | 檔案 | 內容 | 能不能重建 |
 |---|---|---|
 | `state/paper_rebalance.db` | 模擬帳戶、交易、每日快照 | **不能**（前瞻紀錄） |
+| `state/shadow_rebal3.db` | 影子帳戶（三資產）的帳戶、交易、每日快照 | **不能**（前瞻紀錄） |
 | `state/research/holdout.json` | 考卷期結果（只考一次） | **不能** |
 | `state/paper_rebalance.paused` | 有這個檔案就暫停 | 刪掉＝恢復 |
 | `data/bars.db` | K 線快取（1h、5 分） | 能（`fetch_bars.py` 重抓） |
