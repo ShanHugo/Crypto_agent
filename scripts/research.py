@@ -1,4 +1,4 @@
-"""研究工具（第三輪：ETH／台幣比例再平衡）：研究期比較全部規則；考卷期只考一次。
+"""研究工具：比例再平衡（第三輪，ETH＋台幣）與三資產再平衡（第五輪，ETH＋USDT＋台幣，用 --family rebalance3，沒有考卷）。
 
     .venv\\Scripts\\python.exe scripts/research.py --stage dev
     .venv\\Scripts\\python.exe scripts/research.py --stage holdout       # 已考過：只顯示當時的結果
@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 
-from crypto_robot.lab import periods, rebalance_research, rebalance_variants  # noqa: E402
+from crypto_robot.lab import multi_research, periods, rebalance_research, rebalance_variants  # noqa: E402
 from crypto_robot.store.bars import BarStore  # noqa: E402
 
 HOLDOUT_FILE = ROOT / 'state' / 'research' / 'holdout.json'
@@ -36,10 +36,27 @@ def git_commit() -> str:
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
+    ap.add_argument('--family', choices=['rebalance', 'rebalance3'], default='rebalance')
     ap.add_argument('--stage', choices=['dev', 'holdout'], required=True)
     ap.add_argument('--variant', help='考卷期要考的規則名稱（見研究期報告）')
     ap.add_argument('--db', default=str(ROOT / 'data' / 'bars.db'))
     args = ap.parse_args()
+
+    if args.family == 'rebalance3':
+        if args.stage == 'holdout':
+            sys.exit('考卷期已在第三輪用掉，第五輪沒有考卷；往後靠影子帳戶觀察')
+        store = BarStore(args.db)
+        hourly = {a: store.load(m, periods.PERIOD_MIN) for a, m in multi_research.MARKETS.items()}
+        store.close()
+        if not all(hourly.values()):
+            sys.exit('快取缺 K 線，先執行 scripts/fetch_bars.py 與 scripts/fetch_bars.py --market usdttwd --since 2020-12-01')
+        text = multi_research.dev_report(multi_research.run_dev(hourly), datetime.now().strftime('%Y-%m-%d %H:%M'))
+        out = ROOT / 'reports' / f'research_dev_rebalance3_{datetime.now():%Y%m%d}.md'
+        out.parent.mkdir(exist_ok=True)
+        out.write_text(text, encoding='utf-8')
+        print(text)
+        print(f'已寫入 {out}')
+        return
 
     if args.stage == 'holdout' and HOLDOUT_FILE.exists():
         print('考卷期已經考過，以下是當時的結果（不重算）：')
