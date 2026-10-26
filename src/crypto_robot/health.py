@@ -10,7 +10,8 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
 
 LEVELS = {'ok': 0, 'yellow': 1, 'red': 2}
-PAPER_AT = (1, 40)      # 01:35 排程，留 5 分鐘
+PAPER_AT = (1, 40)      # 01:35 排程，留 5 分鐘（之後每小時重試到 07:35）
+WINDOW_END = (8, 0)    # 使用者允許自動交易的時段結束
 REPORT_AT = (8, 35)     # 08:30 排程，留 5 分鐘
 WEBHOOK = re.compile(r'discord(?:app)?\.com/api/webhooks/', re.I)
 LOG_DATE = re.compile(r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})')
@@ -57,22 +58,43 @@ def parse_runs(lines: list[str]) -> list[dict]:
     return runs
 
 
+def failed_attempts(runs: list[dict], day: date) -> list[dict]:
+    """某一天結束代碼不是 0 的執行（時段內每小時重試，可能有好幾次）。"""
+    return [r for r in runs if r['date'] == day and r['exit'] not in (0, None)]
+
+
+def attempts_text(runs: list[dict], day: date) -> str:
+    """'01:35、02:35 執行失敗（最後一個錯誤）'；沒有失敗就回傳空字串。"""
+    fails = failed_attempts(runs, day)
+    if not fails:
+        return ''
+    times = '、'.join(f'{r["time"][0]:02d}:{r["time"][1]:02d}' if r['time'] else '?' for r in fails)
+    reason = next((ln.strip() for ln in reversed(fails[-1]['lines']) if ln.strip()), '沒有錯誤訊息')
+    return f'{times} 執行失敗（{WEBHOOK.sub("<webhook>/", reason)[:120]}）'
+
+
 def check_paper(now: datetime, snapshots: list[dict], runs: list[dict], paused: bool) -> list[Check]:
-    """模擬再平衡（01:35）。snapshots：[{date, action, note}]，由舊到新。"""
+    """模擬再平衡（01:35 起每小時重試到 07:35）。snapshots：[{date, action, note}]，由舊到新。"""
     if not snapshots:
-        return [Check('模擬帳戶', 'yellow', '還沒有建立', '01:30～07:30 之間執行 scripts/paper_rebalance.py 會建倉')]
+        return [Check('模擬帳戶', 'yellow', '還沒有建立', '01:30～08:00 之間執行 scripts/paper_rebalance.py 會建倉')]
     out = []
     want = expected_date(now, PAPER_AT)
     dates = {date.fromisoformat(s['date']): s for s in snapshots}
     start = min(dates)
+    retrying = want not in dates and now.date() == want and (now.hour, now.minute) < WINDOW_END
+    fails = attempts_text(runs, want)
     if paused:
         out.append(Check('今天凌晨執行', 'yellow', '已暫停（state/paper_rebalance.paused）', '要恢復就刪除這個檔案'))
     elif want in dates:
-        s = dates[want]
-        out.append(Check('今天凌晨執行', 'ok', f'{want} 已執行：{s["action"]}'))
+        done = f'{want} 已執行：{dates[want]["action"]}'
+        out.append(Check('今天凌晨執行', 'yellow', f'重試後成功：{done}；之前 {fails}', '偶爾發生不用處理；常發生就把紀錄交給開發者')
+                   if fails else Check('今天凌晨執行', 'ok', done))
+    elif retrying:
+        out.append(Check('今天凌晨執行', 'yellow', f'{want} 尚未成功，時段內每小時會重試到 07:35' + (f'；{fails}' if fails else ''),
+                         '不用處理，等下一次重試'))
     elif want >= start:
-        out.append(Check('今天凌晨執行', 'red', f'沒有 {want} 的執行紀錄',
-                         '看 logs/paper_rebalance.log；確認電腦 01:35 沒有關機或睡眠、排程 paper_rebalance 已啟用'))
+        out.append(Check('今天凌晨執行', 'red', f'{want} 整個 01:30～08:00 都沒有成功' + (f'：{fails}' if fails else '（沒有執行紀錄）'),
+                         '有錯誤訊息就交給開發者；沒有執行紀錄就確認電腦沒有關機或睡眠、排程 paper_rebalance 已啟用'))
     week = [want - timedelta(days=i) for i in range(7)]
     missed = [d for d in week if start <= d < want and d not in dates]
     if missed:
@@ -82,7 +104,8 @@ def check_paper(now: datetime, snapshots: list[dict], runs: list[dict], paused: 
         out.append(Check('最近 7 天', 'ok', '沒有漏跑'))
     if runs and runs[-1]['exit'] not in (0, None):
         tail = ' / '.join(runs[-1]['lines'][-2:])
-        out.append(Check('上次排程', 'red', f'結束代碼 {runs[-1]["exit"]}：{tail}', '看 logs/paper_rebalance.log 的錯誤訊息'))
+        level = 'red' if want not in dates and not retrying else 'yellow'
+        out.append(Check('上次排程', level, f'結束代碼 {runs[-1]["exit"]}：{tail}', '看 logs/paper_rebalance.log 的錯誤訊息'))
     elif runs:
         out.append(Check('上次排程', 'ok', '正常結束'))
     note = snapshots[-1].get('note')

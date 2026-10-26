@@ -1,4 +1,4 @@
-"""比例再平衡模擬帳戶：每天 01:30～07:30 之間執行一次（排程 01:35），用 MAX 當下盤口模擬成交，不下真單。
+"""比例再平衡模擬帳戶：每天 01:30～08:00 之間執行（排程 01:35，失敗每小時重試到 07:35；同一天只成交一次），用 MAX 當下盤口模擬成交，不下真單。
 執行時不推送；每天 08:30 由 --report 推送當天凌晨的結果（凌晨沒執行到也會說明）。
 
     .venv\\Scripts\\python.exe scripts/paper_rebalance.py --dry-run      # 只印出，不寫入
@@ -27,6 +27,7 @@ import aiohttp  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
 
 from crypto_robot.agents.strategy.rebalance import RebalanceParams  # noqa: E402
+from crypto_robot.health import attempts_text, parse_runs  # noqa: E402
 from crypto_robot.core.timeutil import TAIPEI  # noqa: E402
 from crypto_robot.exchange.max.public import MaxPublicClient  # noqa: E402
 from crypto_robot.notify.discord import send  # noqa: E402
@@ -73,12 +74,14 @@ def last_log_lines(n: int = 6) -> list[str]:
 def morning_text(store: PaperStore) -> str:
     today = datetime.now(TAIPEI).date()
     r = day_report(store, today)
+    log = LOG_FILE.read_text(encoding='utf-8', errors='replace').splitlines() if LOG_FILE.exists() else []
+    retries = attempts_text(parse_runs(log), today)
     if r is not None:
-        return message(r)
+        return message(r) + (f'\n🟡 重試後才成功：{retries}' if retries else '')
     if PAUSE_FILE.exists():
         return f'⏸️ 模擬再平衡 {today}：已暫停（state/paper_rebalance.paused），凌晨沒有執行'
-    return '\n'.join([f'🔴 模擬再平衡 {today}：凌晨沒有執行紀錄', '排程紀錄最後幾行：']
-                     + [f'　{ln}' for ln in last_log_lines()])
+    head = f'🔴 模擬再平衡 {today}：01:30～08:00 都沒有成功' + (f'（{retries}）' if retries else '（沒有執行紀錄）')
+    return '\n'.join([head, '排程紀錄最後幾行：'] + [f'　{ln}' for ln in last_log_lines()])
 
 
 def status(store: PaperStore) -> None:
@@ -103,7 +106,7 @@ async def run(store: PaperStore, dry_run: bool, ignore_window: bool) -> int:
         client = MaxPublicClient(session)
         now = await client.server_time_ms()
         if not in_window(now) and not ignore_window:
-            print('現在不在 01:30～07:30 交易時段，不執行（測試可加 --ignore-window）')
+            print('現在不在 01:30～08:00 交易時段，不執行（測試可加 --ignore-window）')
             return 0
         market = (await client.markets())[MARKET]
         if not market.active:

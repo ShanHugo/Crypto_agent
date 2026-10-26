@@ -33,8 +33,8 @@ def test_market_fills_walk_the_book():
 
 
 def test_window():
-    assert in_window(at(26, 1, 30)) and in_window(at(26, 7, 29))
-    assert not in_window(at(26, 1, 29)) and not in_window(at(26, 7, 30))
+    assert in_window(at(26, 1, 30)) and in_window(at(26, 7, 59))
+    assert not in_window(at(26, 1, 29)) and not in_window(at(26, 8, 0))
 
 
 def test_init_buys_half_and_sets_benchmarks(tmp_path):

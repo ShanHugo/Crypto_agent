@@ -44,6 +44,34 @@ def test_paper_ok_missed_and_failed():
     assert hc.check_paper(now, [], [], False)[0].level == 'yellow'
 
 
+RETRY_LOG = """===== 2026/10/28  1:35:40.00
+RuntimeError: MAX 維護中
+----- exit 1
+===== 2026/10/28  2:35:40.00
+ConnectionError: timeout
+----- exit 1
+===== 2026/10/28  3:35:41.00
+動作：不動作
+----- exit 0""".splitlines()
+
+
+def test_attempts_text_lists_failed_times_and_last_error():
+    runs = hc.parse_runs(RETRY_LOG)
+    assert hc.attempts_text(runs, date(2026, 10, 28)) == '01:35、02:35 執行失敗（ConnectionError: timeout）'
+    assert hc.attempts_text(runs, date(2026, 10, 27)) == ''
+
+
+def test_paper_retrying_recovered_and_whole_window_failed():
+    runs = hc.parse_runs(RETRY_LOG[:6])                     # 只有兩次失敗
+    retrying = levels(hc.check_paper(datetime(2026, 10, 28, 3, 0), snaps('2026-10-27'), runs, False))
+    assert retrying['今天凌晨執行'] == 'yellow' and retrying['上次排程'] == 'yellow'
+    failed = hc.check_paper(datetime(2026, 10, 28, 8, 5), snaps('2026-10-27'), runs, False)
+    assert levels(failed)['今天凌晨執行'] == 'red' and '01:35、02:35' in failed[0].detail
+    recovered = hc.check_paper(datetime(2026, 10, 28, 9, 0), snaps('2026-10-27', '2026-10-28'), hc.parse_runs(RETRY_LOG), False)
+    assert levels(recovered)['今天凌晨執行'] == 'yellow' and '重試後成功' in recovered[0].detail
+    assert levels(recovered)['上次排程'] == 'ok'
+
+
 def test_report_ignores_manual_runs_before_0830():
     log = ['===== 2026/10/26 週一  1:56:10.61', 'preview', '----- exit 0']
     now = datetime(2026, 10, 26, 10, 0)
