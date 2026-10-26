@@ -31,6 +31,7 @@ ETH 目標 50%，偏離 10 個百分點就調回；用 MAX 當下盤口模擬成
 .venv\Scripts\python.exe scripts/paper_rebalance.py --report --no-send   # 預覽 08:30 的通知
 ```
 建立排程（以**系統管理員身分**開 PowerShell）：`powershell -ExecutionPolicy Bypass -File scripts\register_tasks.ps1`（加 `-Disable` 停用）。
+Stock_Robot 的本機操作台有「虛擬貨幣」分頁，顯示帳戶、Agent 健康、排程與紀錄（資料來自 `scripts/console_data.py`，只讀）。
 要推送 Discord：複製 `.env.example` 為 `.env`，填 `PAPER_WEBHOOK_URL` 或 `DISCORD_WEBHOOK_URL`。暫停：建立 `state/paper_rebalance.paused`。
 
 ## 研究

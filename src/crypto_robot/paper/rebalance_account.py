@@ -88,6 +88,17 @@ class PaperStore:
         return self.db.execute('SELECT date, price, equity, weight, static_equity, hodl_equity, action '
                                'FROM snapshots ORDER BY date').fetchall()
 
+    def history(self) -> list[dict]:
+        """每天的快照（含備註），由舊到新。"""
+        cur = self.db.execute('SELECT * FROM snapshots ORDER BY date')
+        cols = [c[0] for c in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+    def trade_rows(self) -> list[dict]:
+        cur = self.db.execute('SELECT * FROM trades ORDER BY ts')
+        cols = [c[0] for c in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+
     def trades(self) -> list[tuple]:
         return self.db.execute('SELECT date, side, reason, qty, avg_price, gross, fee FROM trades ORDER BY ts').fetchall()
 

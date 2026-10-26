@@ -29,6 +29,7 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 | 再平衡判斷（研究與模擬共用） | `src/crypto_robot/agents/strategy/rebalance.py` |
 | 排程時間 | `scripts/register_tasks.ps1` 的 `$tasks`（改完請使用者以系統管理員重跑） |
 | MAX 公開 API | `src/crypto_robot/exchange/max/public.py`（端點已實測，見 DESIGN.md 第 1 節） |
+| 操作台「虛擬貨幣」分頁的資料、Agent 健康檢查 | `scripts/console_data.py`（只讀 JSON）、`src/crypto_robot/health.py`；畫面與 API 在 Stock_Robot 的 `src/web/templates/console.html`、`src/web/console.py`（`/api/crypto`） |
 | 研究 | `src/crypto_robot/lab/`（`rebalance_variants.py` 是事先訂定的組合與標準，看過結果後不得修改） |
 
 改再平衡參數會讓模擬帳戶前後不一致：先問使用者要「接著用舊帳戶」還是「重開帳戶（備份 `state/paper_rebalance.db` 後刪除）」。
