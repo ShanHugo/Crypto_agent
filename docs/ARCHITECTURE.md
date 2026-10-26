@@ -11,6 +11,7 @@
 | 08:30 沒收到推送 | 操作台「虛擬貨幣」→ 排程 `paper_report`、`logs\paper_report.log`、`.env` 的 webhook | 5 |
 | 操作台燈號 🟡／🔴 | 該項檢查的「→」建議；檢查邏輯在 `src/crypto_robot/health.py` | 5 |
 | 帳戶數字怪（成交價、比例、權益） | `paper_rebalance.py --status`、`state\paper_main.db`、`paper/multi_account.py`、`paper/fills.py` | 4、6 |
+| 備份失敗 | `scripts/backup.py`、`src/crypto_robot/backup.py`、`state\backup\last.json`、`.env` 的 `BACKUP_DIRS` | 7 |
 | 真單擋下、沒跑完、訂單 unknown | `scripts/live_trade.py --status`／`--plan`、`live/executor.py`、`state\live\live.db` | 4、5 |
 | 真實帳戶（唯讀）讀不到、IP 變了 | `scripts/live_check.py`（手動讀、`--accept-ip`）、`live/readonly.py`、`state\live\` | 4、5 |
 | 影子帳戶（兩資產）怪 | `state\shadow_rebal2.db`、`paper/multi_account.py`；設定在 `paper_rebalance.py` 的 `SHADOW` | 4 |
@@ -87,7 +88,7 @@ flowchart LR
 |---|---|---|---|
 | 01:30～08:00 | — | 使用者允許自動交易的時段（2026-10-26 由 07:30 延長） | — |
 | 01:35、02:35…07:35 | `paper_rebalance` | ETH 比例偏離 50% 達 10 個百分點就調回；同一天只成交一次，已成功的後續重試只會略過 | 不推送 |
-| 08:30 | `paper_report` | 讀當天凌晨的結果，附上失敗過的重試；整個時段都沒成功就推 🔴 附紀錄最後幾行 | Discord |
+| 08:30 | `paper_report` | 讀當天凌晨的結果，附上失敗過的重試；整個時段都沒成功就推 🔴 附紀錄最後幾行；推送後備份 state/ 與 reports/ | Discord |
 | 隨時 | — | 操作台「虛擬貨幣」分頁：帳戶、健康、排程、紀錄 | 不推送 |
 
 排程用 S4U（不用登入 Windows），會把電腦從睡眠喚醒；某一次失敗（網路、MAX 維護、還沒喚醒）由下一小時的重試補上；整個時段電腦都關機才會漏跑，開機後補跑但過了 08:00 會自己略過。
@@ -103,6 +104,7 @@ flowchart LR
 | 影子帳戶：兩資產（同一個排程） | `paper_rebalance.py` 在主帳戶之後執行 | `paper/multi_account.py`、`agents/strategy/rebalance_multi.py` | MAX 公開 API（ethtwd）、`state/shadow_rebal2.db` | `state/shadow_rebal2.db` | 失敗不影響主帳戶，回傳結束代碼 1 讓下一小時重試；同一天不重複 | 和主帳戶相同的「今天凌晨執行」等檢查 |
 | 真單（同一個排程，`.env` 開啟才執行） | `paper_rebalance.py` 在唯讀讀取之後執行 | `live/executor.py`、`exchange/max/private.py` 的 `MaxTradingClient` | MAX 私有 API、`.env`（LIVE_TRADING、LIVE_CONFIRM、LIVE_CAPITAL_CAP） | `state/live/live.db` | 安全檢查不過就整天不下單；同一天只做一次；結果不明不重送 | 今天有執行、沒被擋下、沒有 rejected／unknown 訂單 |
 | 真實帳戶（唯讀，同一個排程） | `paper_rebalance.py` 在兩個模擬帳戶之後執行 | `live/readonly.py`、`exchange/max/private.py`（只有查詢方法） | `.env` 的 MAX 金鑰、MAX 私有 API、公開 IP | `state/live/balances.jsonl` | 一天只讀一次；失敗只記錄，不影響模擬帳戶 | 今天凌晨有讀到、公開 IP 和白名單相同、讀取成功 |
+| 備份（`paper_report` 推送後） | `paper_rebalance.py --report` → `scripts/backup.py` | `src/crypto_robot/backup.py` | `state/`、`reports/`（不含 `.env`） | `BACKUP_DIRS` 的壓縮檔（保留 40 份）、`state/backup/last.json` | 一個目的地失敗不影響其他；SQLite 先做一致快照再壓縮 | 每個目的地成功、3 天內有備份 |
 | 系統與安全（不是排程） | 操作台開分頁時 | `health.py` 的 `check_system` | git、logs、考卷檔、K 線快取 | — | — | `.env` 沒進 git、紀錄檔沒有 webhook |
 
 ---
@@ -148,6 +150,7 @@ flowchart TD
 | 真單「安全檢查擋下」 | 系統維護、有掛單凍結、超過階段上限、價格跳動 > 20%、單筆 > 60% | 依原因處理；擋下時帳戶不會動。要加碼先調高 `LIVE_CAPITAL_CAP` |
 | 真單訂單 unknown | 送出後網路中斷，查不到結果 | 到 MAX 網頁確認有沒有成交，再交給開發者 |
 | 「公開 IP 和白名單不同」「讀取失敗：HTTP 401」 | 家用網路 IP 變了，金鑰被 MAX 白名單擋下 | 到 MAX 的 API 金鑰頁面把白名單改成新 IP，再執行 `scripts\live_check.py --accept-ip` |
+| 「備份失敗」🔴 | 雲端硬碟沒有掛上（還沒登入 Windows）或資料夾不存在 | 登入 Windows 後執行 `scripts\backup.py` |
 | 「專案資料夾沒有金鑰檔」🔴 | 有人把金鑰另存成文字檔放在專案資料夾 | 金鑰只放 `.env`，刪掉那個檔案 |
 | 「現在不在 01:30～08:00 交易時段」 | 排程時間被改或補跑太晚 | 檢查排程時間 |
 
@@ -179,7 +182,9 @@ flowchart TD
 | `reports/*.md` | 研究報告 | 能（`research.py` 重跑） |
 | `.env` | Discord webhook | 自己保管（等同密碼） |
 
-`state/`、`data/`、`logs/`、`reports/`、`.env` 都不進 git。**目前沒有自動備份**：`state/` 的兩個檔案遺失就無法重建。
+`state/`、`data/`、`logs/`、`reports/`、`.env` 都不進 git。**備份**：每天 08:30 報告推送後，把 `state/` 與 `reports/` 壓縮到 `.env` 的 `BACKUP_DIRS`（保留 40 份，不含 `.env`）。
+雲端硬碟電腦版要登入 Windows 才會掛上磁碟機；沒登入時備份會失敗、健康檢查亮 🔴，登入後執行 `scripts\backup.py` 補一次。
+**還原**：停用排程 → 把最新的壓縮檔解開到專案資料夾（覆蓋 `state/`、`reports/`）→ `.env` 自己另外保管 → `paper_rebalance.py --status`、`live_trade.py --status` 確認 → 恢復排程。真單以 MAX 實際餘額為準。
 
 ---
 

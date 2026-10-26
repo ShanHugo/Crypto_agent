@@ -188,6 +188,23 @@ def check_live_trade(now: datetime, enabled: bool, run: dict | None, orders: lis
     return out
 
 
+def check_backup(now: datetime, last: dict | None, configured: bool) -> list[Check]:
+    """state/backup/last.json：每個目的地都成功、3 天內有備份。"""
+    if not configured:
+        return [Check('備份', 'yellow', '.env 沒有 BACKUP_DIRS', '在 .env 設定備份資料夾')]
+    if last is None:
+        return [Check('備份', 'yellow', '還沒有備份紀錄', '每天 08:30 報告推送後會自動備份；也可以執行 scripts/backup.py')]
+    bad = [d for d in last['destinations'] if not d['ok']]
+    age = (now - datetime.fromisoformat(last['time'])).days
+    if bad:
+        return [Check('備份', 'red', f'{last["time"][:16]} 備份失敗：' + '；'.join(f'{d["dir"]}：{d["error"]}' for d in bad),
+                      '多半是還沒登入 Windows，雲端硬碟沒有掛上：登入後執行 scripts/backup.py 補一次')]
+    if age > 3:
+        return [Check('備份', 'red', f'最後一次備份是 {last["time"][:10]}（{age} 天前）', '確認 08:30 報告排程有在跑；或執行 scripts/backup.py')]
+    d = last['destinations'][0]
+    return [Check('備份', 'ok', f'{last["time"][:16]}：{d["file"]}（{d["size"] / 1024:,.0f} KB）')]
+
+
 SECRET_NAME = re.compile(r'api|key|secret|金鑰|密碼', re.I)
 
 

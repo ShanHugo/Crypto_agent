@@ -328,6 +328,9 @@ async def report(no_send: bool) -> int:
     if not no_send:
         async with aiohttp.ClientSession() as session:
             await send(session, os.getenv('PAPER_WEBHOOK_URL') or os.getenv('DISCORD_WEBHOOK_URL'), text)
+        # 推送後備份（08:30 通常已登入 Windows，雲端硬碟有掛上）；失敗只記錄，健康檢查會亮 🔴
+        import backup as bk          # scripts/backup.py
+        print('\n'.join(bk.lines(bk.run())))
     return 0
 
 

@@ -34,6 +34,7 @@ BARS = ROOT / 'data' / 'bars.db'
 LIVE_RECORDS = ROOT / 'state' / 'live' / 'balances.jsonl'   # 真實帳戶（唯讀）紀錄，含公開 IP，只在本機
 LIVE_IP = ROOT / 'state' / 'live' / 'public_ip.json'
 LIVE_DB = ROOT / 'state' / 'live' / 'live.db'
+BACKUP_STATUS = ROOT / 'state' / 'backup' / 'last.json'
 LOGS = {'paper_rebalance': ROOT / 'logs' / 'paper_rebalance.log', 'paper_report': ROOT / 'logs' / 'paper_report.log'}
 
 
@@ -142,7 +143,9 @@ def main() -> None:
         hc.agent('paper_report', '早上報告（08:30）', hc.check_report(now, hc.parse_runs(logs['paper_report']), webhook_set, start)),
         hc.agent('system', '系統與安全', hc.check_system(env_tracked(), {k: '\n'.join(v) for k, v in logs.items()},
                                                     holdout, last_bar(), now,
-                                                    hc.stray_secret_files([p.name for p in ROOT.iterdir() if p.is_file()]))),
+                                                    hc.stray_secret_files([p.name for p in ROOT.iterdir() if p.is_file()]))
+                 + hc.check_backup(now, json.loads(BACKUP_STATUS.read_text(encoding='utf-8')) if BACKUP_STATUS.exists() else None,
+                                   bool((env.get('BACKUP_DIRS') or '').strip()))),
         shadow_agent,
         hc.agent('live_trade', '真單', hc.check_live_trade(now, live_on, run_want, orders_want)),
         hc.agent('live', '真實帳戶（唯讀）', hc.check_live(now, live_records, keys_set, ref is not None)),
