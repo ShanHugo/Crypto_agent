@@ -7,9 +7,9 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 
 ## 現況（2026-10-26）
 
-- 唯一在跑的是**比例再平衡模擬帳戶**（不是真單）：`rebal-eth50-band10`（ETH 目標 50%，偏離 10 個百分點調回），6,000 台幣。
+- **主模擬帳戶**（不是真單）：三資產 `rebal3-eth50-cashusdt75-band5`（ETH 50%、USDT 37.5%、台幣 12.5%，任何一項偏離 5 個百分點全部調回），6,000 台幣；2026-10-26 由原本的兩資產帳戶轉換過來（`--migrate`），狀態在 `state/paper_main.db`。舊的 `state/paper_rebalance.db` 只留作紀錄。
 - 排程：01:35 執行 `paper_rebalance`（不推送，失敗每小時重試到 07:35）、08:30 執行 `paper_report`（推送 Discord）。
-- **影子帳戶**（同一個排程、同樣 6,000 元，只記錄）：三資產再平衡 `rebal3-eth50-cashusdt75-band10`（ETH 50%、USDT 37.5%、台幣 12.5%），2026-10-27 凌晨起；狀態在 `state/shadow_rebal3.db`。第五輪研究期它沒通過，使用者仍決定觀察。
+- **影子帳戶**（同一個排程、同樣 6,000 元，只記錄）：原本的兩資產 `rebal-eth50-band10`（ETH 50%、台幣 50%），2026-10-27 凌晨重新建倉；狀態在 `state/shadow_rebal2.db`。
 - 五輪研究共 122 組：只有比例再平衡留下。**考卷期（2024-01-01 起）已用掉**，結果在 `state/research/holdout.json`。
 - **真單**：使用者有資金時會主動說；在那之前不要提議接真單、不要碰 MAX 私有 API 或金鑰。
 
@@ -27,17 +27,16 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 
 | 想改 | 檔案 |
 |---|---|
-| 再平衡規則參數、初始資金、手續費 | `scripts/paper_rebalance.py` 開頭的 `PARAMS`、`INITIAL`、`TAKER_FEE` |
+| 主帳戶／影子帳戶的規則、初始資金、手續費 | `scripts/paper_rebalance.py` 開頭的 `MAIN`、`SHADOW`、`INITIAL`、`TAKER_FEE` |
 | 08:30 通知內容 | `scripts/paper_rebalance.py` 的 `message()`、`morning_text()` |
-| 模擬成交、交易時段、帳戶紀錄 | `src/crypto_robot/paper/rebalance_account.py`（`WINDOW`、`run_day`、`day_report`）、`paper/fills.py` |
+| 模擬成交、帳戶紀錄 | `src/crypto_robot/paper/multi_account.py`（`run_day`、`day_report`、`import_two_asset`）、`paper/fills.py`；交易時段 `WINDOW` 在 `paper/rebalance_account.py` |
 | 再平衡判斷（研究與模擬共用） | `src/crypto_robot/agents/strategy/rebalance.py`；多資產是 `rebalance_multi.py` |
-| 影子帳戶（三資產） | `scripts/paper_rebalance.py` 的 `SHADOW_*`、`src/crypto_robot/paper/multi_account.py`；組合在 `lab/multi_variants.py` 的 `SHADOW` |
 | 排程時間 | `scripts/register_tasks.ps1` 的 `$tasks`（改完請使用者以系統管理員重跑） |
 | MAX 公開 API | `src/crypto_robot/exchange/max/public.py`（端點已實測，見 DESIGN.md 第 1 節） |
 | 操作台「虛擬貨幣」分頁的資料、Agent 健康檢查 | `scripts/console_data.py`（只讀 JSON）、`src/crypto_robot/health.py`；畫面與 API 在 Stock_Robot 的 `src/web/templates/console.html`、`src/web/console.py`（`/api/crypto`） |
 | 研究 | `src/crypto_robot/lab/`（`rebalance_variants.py` 是事先訂定的組合與標準，看過結果後不得修改） |
 
-改再平衡參數會讓模擬帳戶前後不一致：先問使用者要「接著用舊帳戶」還是「重開帳戶（備份 `state/paper_rebalance.db` 後刪除）」。
+改再平衡參數會讓模擬帳戶前後不一致：先問使用者要「接著用舊帳戶」還是「重開帳戶（備份 `state/paper_main.db` 後刪除）」。
 
 ## 常用指令（PowerShell，在專案根目錄）
 

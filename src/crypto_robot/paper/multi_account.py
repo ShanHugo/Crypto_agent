@@ -144,6 +144,33 @@ def run_day(store: MultiPaperStore, books: dict[str, OrderBook], markets: dict[s
     return result
 
 
+def import_two_asset(old, new: MultiPaperStore, params: MultiParams) -> int:
+    """把舊的兩資產帳戶（rebalance_account.PaperStore）轉成多資產帳戶：持有量、每日快照、交易都照搬，
+    新增的資產持有量為 0（下一次執行會因為偏離目標而調整）。回傳搬過來的快照數。新帳戶必須是空的。"""
+    acct = old.account()
+    if acct is None:
+        raise ValueError('舊帳戶是空的，沒有東西可以轉')
+    if new.account() is not None:
+        raise ValueError('新帳戶已經有資料，不覆蓋')
+    holdings = {a: ZERO for a, _ in params.targets} | {'eth': acct.eth}
+    action = {'buy': 'rebalance', 'sell': 'rebalance'}
+    with new.db:
+        new.db.execute('INSERT INTO account VALUES (1,?,?,?,?,?,?)', (
+            acct.started_at, str(acct.initial), json.dumps([(a, str(t)) for a, t in params.targets]), str(params.band),
+            str(acct.cash), _dump(holdings)))
+        for h in old.history():
+            w = Decimal(h['weight'])
+            held = {a: ZERO for a, _ in params.targets} | {'eth': Decimal(h['eth'])}
+            new.db.execute('INSERT INTO snapshots VALUES (?,?,?,?,?,?,?,?,?)', (
+                h['date'], h['ts'], _dump({'eth': Decimal(h['price'])}), h['cash'], _dump(held), h['equity'],
+                _dump({a: ZERO for a, _ in params.targets} | {'eth': w, 'twd': 1 - w}),
+                action.get(h['action'], h['action']), h['note']))
+        for t in old.trade_rows():
+            new.db.execute('INSERT INTO trades VALUES (?,?,?,?,?,?,?,?,?)', (
+                t['ts'], t['date'], 'eth', t['side'], t['reason'], t['qty'], t['avg_price'], t['gross'], t['fee']))
+    return len(old.history())
+
+
 def day_report(store: MultiPaperStore, day: date) -> dict | None:
     """從資料庫讀出某一天的結果；那天沒有執行就回傳 None。"""
     row = store.db.execute('SELECT prices, cash, holdings, equity, weights, action, note FROM snapshots WHERE date = ?',

@@ -56,3 +56,23 @@ def test_dry_run_does_not_write(tmp_path):
     s = MultiPaperStore(tmp_path / 's.db')
     r = run_day(s, books(), MARKETS, P, FEE, at(27), D(6000), write=False)
     assert r['action'] == 'init' and s.account() is None and not s.has_snapshot(r['date'])
+
+
+def test_import_two_asset_account_then_rebalances_into_usdt(tmp_path):
+    from crypto_robot.agents.strategy.rebalance import RebalanceParams
+    from crypto_robot.paper import rebalance_account as ra
+    from crypto_robot.paper.multi_account import import_two_asset
+    old = ra.PaperStore(tmp_path / 'old.db')
+    eth_market = MARKETS['eth']
+    ra.run_day(old, books()['eth'], eth_market, RebalanceParams(D('0.5'), D('0.10')), FEE, at(26), D(6000))
+    new = MultiPaperStore(tmp_path / 'new.db')
+    params = by_name('rebal3-eth50-cashusdt75-band5').params
+    assert import_two_asset(old, new, params) == 1
+    acct = new.account()
+    assert acct['holdings']['usdt'] == 0 and acct['holdings']['eth'] == old.account().eth and acct['cash'] == old.account().cash
+    assert [t['asset'] for t in new.trade_rows()] == ['eth'] and new.history()[0]['action'] == 'init'
+    with pytest.raises(ValueError):
+        import_two_asset(old, new, params)                                   # 不覆蓋
+    r = run_day(new, books(), MARKETS, params, FEE, at(27), D(6000))
+    assert r['action'] == 'rebalance' and ('usdt', 'buy') in {(t['asset'], t['side']) for t in r['trades']}
+    assert r['weights']['usdt'] == pytest.approx(D('0.375'), abs=D('0.01'))

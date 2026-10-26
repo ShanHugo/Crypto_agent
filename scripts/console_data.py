@@ -21,10 +21,13 @@ from dotenv import dotenv_values  # noqa: E402
 from crypto_robot import health as hc  # noqa: E402
 from crypto_robot.core.timeutil import TAIPEI  # noqa: E402
 
-DB = ROOT / 'state' / 'paper_rebalance.db'
-SHADOW_DB = ROOT / 'state' / 'shadow_rebal3.db'
-SHADOW_LABEL = '三資產（ETH 50%／USDT 37.5%／台幣 12.5%）'
-SHADOW_VARIANT = 'rebal3-eth50-cashusdt75-band10'
+# 2026-10-26 起：主帳戶是三資產 band5（由舊兩資產帳戶轉換），影子是兩資產 band10（scripts/paper_rebalance.py 的 MAIN／SHADOW）
+ACCOUNTS = {
+    'main': {'db': ROOT / 'state' / 'paper_main.db', 'label': '三資產 band5（ETH 50%／USDT 37.5%／台幣 12.5%）',
+             'variant': 'rebal3-eth50-cashusdt75-band5'},
+    'shadow': {'db': ROOT / 'state' / 'shadow_rebal2.db', 'label': '兩資產 band10（ETH 50%／台幣 50%）',
+               'variant': 'rebal-eth50-band10'},
+}
 PAUSE_FILE = ROOT / 'state' / 'paper_rebalance.paused'
 HOLDOUT = ROOT / 'state' / 'research' / 'holdout.json'
 BARS = ROOT / 'data' / 'bars.db'
@@ -70,38 +73,13 @@ def last_bar() -> datetime | None:
     return datetime.fromtimestamp(ts / 1000, TAIPEI).replace(tzinfo=None) if ts else None
 
 
-def paper_data() -> dict:
-    if not DB.exists():
-        return {'account': None, 'curve': [], 'trades': []}
-    from crypto_robot.paper.rebalance_account import PaperStore
-    store = PaperStore(DB)
-    try:
-        acct = store.account()
-        hist = store.history()
-        trades = store.trade_rows()
-    finally:
-        store.close()
-    account = None if acct is None else {
-        'initial': float(acct.initial), 'target': float(acct.params.target), 'band': float(acct.params.band),
-        'started_at': datetime.fromtimestamp(acct.started_at / 1000, TAIPEI).isoformat(timespec='minutes'),
-        'cash': float(acct.cash), 'eth': float(acct.eth)}
-    curve = [{'date': h['date'], 'time': datetime.fromtimestamp(h['ts'] / 1000, TAIPEI).strftime('%H:%M'),
-              'price': num(h['price']), 'equity': num(h['equity']), 'weight': num(h['weight']),
-              'static': num(h['static_equity']), 'hodl': num(h['hodl_equity']), 'action': h['action'], 'note': h['note']}
-             for h in hist]
-    trade_list = [{'date': t['date'], 'time': datetime.fromtimestamp(t['ts'] / 1000, TAIPEI).strftime('%H:%M'),
-                   'side': t['side'], 'reason': t['reason'], 'qty': num(t['qty']), 'price': num(t['avg_price']),
-                   'amount': num(t['gross']), 'fee': num(t['fee']), 'weight_before': num(t['weight_before']),
-                   'weight_after': num(t['weight_after'])} for t in trades]
-    return {'account': account, 'curve': curve, 'trades': trade_list}
-
-
-def shadow_data() -> dict | None:
-    """影子帳戶（第五輪三資產再平衡）；還沒建立就回傳 None。"""
-    if not SHADOW_DB.exists():
+def account_data(key: str) -> dict | None:
+    """一個模擬帳戶的帳戶資訊、每日快照、交易；還沒建立就回傳 None。只讀，資料庫不存在也不會建立。"""
+    spec = ACCOUNTS[key]
+    if not spec['db'].exists():
         return None
     from crypto_robot.paper.multi_account import MultiPaperStore
-    store = MultiPaperStore(SHADOW_DB)
+    store = MultiPaperStore(spec['db'])
     try:
         acct = store.account()
         hist = store.history()
@@ -111,36 +89,39 @@ def shadow_data() -> dict | None:
     if acct is None:
         return None
     js = lambda t: {k: float(Decimal(v)) for k, v in json.loads(t).items()}     # noqa: E731
+    p = acct['params']
+    hm = lambda ts: datetime.fromtimestamp(ts / 1000, TAIPEI).strftime('%H:%M')  # noqa: E731
     return {
-        'label': SHADOW_LABEL, 'variant': SHADOW_VARIANT, 'initial': float(acct['initial']),
+        'label': spec['label'], 'variant': spec['variant'], 'initial': float(acct['initial']),
+        'targets': {a: float(t) for a, t in p.targets} | {'twd': float(p.cash_target)}, 'band': float(p.band),
         'started_at': datetime.fromtimestamp(acct['started_at'] / 1000, TAIPEI).isoformat(timespec='minutes'),
-        'curve': [{'date': h['date'], 'time': datetime.fromtimestamp(h['ts'] / 1000, TAIPEI).strftime('%H:%M'),
-                   'equity': num(h['equity']), 'weights': js(h['weights']), 'prices': js(h['prices']),
-                   'action': h['action'], 'note': h['note']} for h in hist],
-        'trades': [{'date': t['date'], 'time': datetime.fromtimestamp(t['ts'] / 1000, TAIPEI).strftime('%H:%M'),
-                    'asset': t['asset'], 'side': t['side'], 'reason': t['reason'], 'qty': num(t['qty']),
-                    'price': num(t['avg_price']), 'amount': num(t['gross']), 'fee': num(t['fee'])} for t in trades],
+        'curve': [{'date': h['date'], 'time': hm(h['ts']), 'equity': num(h['equity']), 'weights': js(h['weights']),
+                   'prices': js(h['prices']), 'action': h['action'], 'note': h['note']} for h in hist],
+        'trades': [{'date': t['date'], 'time': hm(t['ts']), 'asset': t['asset'], 'side': t['side'], 'reason': t['reason'],
+                    'qty': num(t['qty']), 'price': num(t['avg_price']), 'amount': num(t['gross']), 'fee': num(t['fee'])}
+                   for t in trades],
     }
+
+
+def snaps(acc: dict | None) -> list[dict]:
+    return [{'date': c['date'], 'action': c['action'], 'note': c['note']} for c in acc['curve']] if acc else []
 
 
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     now = datetime.now(TAIPEI).replace(tzinfo=None)
-    paper = paper_data()
+    main_acc, shadow = account_data('main'), account_data('shadow')
     logs = {k: read_lines(p) for k, p in LOGS.items()}
     holdout = json.loads(HOLDOUT.read_text(encoding='utf-8')) if HOLDOUT.exists() else None
     env = dotenv_values(ROOT / '.env') if (ROOT / '.env').exists() else {}
     webhook_set = bool((env.get('PAPER_WEBHOOK_URL') or env.get('DISCORD_WEBHOOK_URL') or '').strip())
-    snaps = [{'date': c['date'], 'action': c['action'], 'note': c['note']} for c in paper['curve']]
-    start = datetime.fromisoformat(paper['account']['started_at']).date() if paper['account'] else None
-    shadow = shadow_data()
-    shadow_agent = (hc.agent('shadow', '影子帳戶：三資產', hc.check_paper(
-        now, [{'date': c['date'], 'action': c['action'], 'note': c['note']} for c in shadow['curve']],
-        hc.parse_runs(logs['paper_rebalance']), PAUSE_FILE.exists())) if shadow else
-        hc.agent('shadow', '影子帳戶：三資產', [hc.Check('影子帳戶', 'ok', '下一個凌晨 01:35 和主帳戶一起建立')]))
+    start = datetime.fromisoformat(main_acc['started_at']).date() if main_acc else None
+    runs = hc.parse_runs(logs['paper_rebalance'])
+    shadow_agent = (hc.agent('shadow', '影子帳戶：兩資產', hc.check_paper(now, snaps(shadow), runs, PAUSE_FILE.exists()))
+                    if shadow else
+                    hc.agent('shadow', '影子帳戶：兩資產', [hc.Check('影子帳戶', 'ok', '下一個凌晨 01:35 和主帳戶一起建立')]))
     agents = [
-        hc.agent('paper_rebalance', '模擬再平衡（01:35）', hc.check_paper(now, snaps, hc.parse_runs(logs['paper_rebalance']),
-                                                                    PAUSE_FILE.exists())),
+        hc.agent('paper_rebalance', '模擬再平衡（01:35）', hc.check_paper(now, snaps(main_acc), runs, PAUSE_FILE.exists())),
         hc.agent('paper_report', '早上報告（08:30）', hc.check_report(now, hc.parse_runs(logs['paper_report']), webhook_set, start)),
         hc.agent('system', '系統與安全', hc.check_system(env_tracked(), {k: '\n'.join(v) for k, v in logs.items()},
                                                     holdout, last_bar(), now)),
@@ -150,7 +131,7 @@ def main() -> None:
         'generated_at': now.isoformat(timespec='seconds'),
         'paused': PAUSE_FILE.exists(),
         'paused_info': PAUSE_FILE.read_text(encoding='utf-8').strip() if PAUSE_FILE.exists() else None,
-        **paper,
+        'main': main_acc,
         'shadow': shadow,
         'holdout': None if holdout is None else {k: holdout.get(k) for k in
                                                  ('variant', 'period', 'passed', 'rebalances', 'stats', 'static', 'hodl', 'halves', 'tested_at')},
