@@ -38,10 +38,12 @@ class FakeSession:
     def __init__(self, routes: dict):
         self.routes = routes
         self.calls: list[tuple[str, object]] = []
+        self.headers: list[dict | None] = []
 
-    def get(self, url, params=None, timeout=None):
-        path = url.split('max-api.maicoin.com', 1)[-1]
+    def get(self, url, params=None, timeout=None, headers=None):
+        path = url.split('max-api.maicoin.com', 1)[-1].split('?', 1)[0]
         self.calls.append((path, params))
+        self.headers.append(headers)
         route = self.routes[path]
         if isinstance(route, list):
             route = route.pop(0)

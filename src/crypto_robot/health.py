@@ -133,11 +133,25 @@ def check_report(now: datetime, runs: list[dict], webhook_set: bool, account_sta
     return out
 
 
+SECRET_NAME = re.compile(r'api|key|secret|金鑰|密碼', re.I)
+
+
+def stray_secret_files(names: list[str]) -> list[str]:
+    """專案資料夾最上層、名稱像金鑰的文字檔（.env 以外）。"""
+    return sorted(n for n in names if n != '.env' and not n.endswith('.example') and n.lower().endswith(('.txt', '.json', '.csv', '.md'))
+                  and SECRET_NAME.search(n) and n not in ('README.md', 'CLAUDE.md'))
+
+
 def check_system(env_tracked: bool, log_texts: dict[str, str], holdout: dict | None,
-                 last_bar: datetime | None, now: datetime) -> list[Check]:
+                 last_bar: datetime | None, now: datetime, stray: list[str] | None = None) -> list[Check]:
     """系統與安全。log_texts：紀錄檔名 → 內容；last_bar：K 線快取最後一根（台北時間）。"""
     out = [Check('.env 沒進 git', 'red', '.env 被 git 追蹤，webhook 會外流（repo 是公開的）', 'git rm --cached .env 後 commit')
            if env_tracked else Check('.env 沒進 git', 'ok', '')]
+    if stray:
+        out.append(Check('專案資料夾沒有金鑰檔', 'red', f'{"、".join(stray)} 看起來像金鑰或密碼檔',
+                         '金鑰只放 .env；確認 .env 有了之後刪除這個檔案（repo 是公開的，絕不能 commit）'))
+    else:
+        out.append(Check('專案資料夾沒有金鑰檔', 'ok', ''))
     leaked = [name for name, text in log_texts.items() if WEBHOOK.search(text)]
     out.append(Check('紀錄檔沒有 webhook', 'red', f'{", ".join(leaked)} 出現 webhook 網址', '刪除該行，並到 Discord 重新產生 webhook')
                if leaked else Check('紀錄檔沒有 webhook', 'ok', ''))

@@ -90,6 +90,14 @@ def test_system_flags_tracked_env_and_leaked_webhook():
     assert set(levels(clean).values()) == {'ok'}
 
 
+def test_stray_secret_files_flagged():
+    names = ['MAX API.txt', 'requirements.txt', 'README.md', 'CLAUDE.md', '.env', '.env.example', 'my_secret.json', 'notes.txt']
+    assert hc.stray_secret_files(names) == ['MAX API.txt', 'my_secret.json']
+    now = datetime(2026, 10, 26, 10, 0)
+    assert levels(hc.check_system(False, {}, None, None, now, ['MAX API.txt']))['專案資料夾沒有金鑰檔'] == 'red'
+    assert levels(hc.check_system(False, {}, None, None, now, []))['專案資料夾沒有金鑰檔'] == 'ok'
+
+
 def test_agent_and_overall_levels():
     a = hc.agent('k', 'L', [hc.Check('x', 'ok', ''), hc.Check('y', 'yellow', '')])
     b = hc.agent('k2', 'L2', [hc.Check('z', 'red', '')])

@@ -20,6 +20,7 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 - 新研究：規則組合與通過標準**先寫好、先 commit，才跑結果**；沒通過不放寬標準。研究期資料（2021–2023）已看過四次。
 - `.env`（webhook 等同密碼）、`state/`、`data/`、`logs/`、`reports/` 不進 git；不要在輸出中印出 webhook 網址。
 - repo 是公開的（github.com/ShanHugo/Crypto_agent），只有 `main` 分支：改完 → 測試通過 → commit → push。
+- **commit 一律明確列出檔名，不用 `git add -A`／`git add .`**（2026-10-26 資料夾裡曾出現金鑰文字檔）；commit 內容不能有金鑰、webhook、使用者的公開 IP 或其他個資。
 - `requirements.txt` 只能用 ASCII（中文 Windows 的 pip 讀不了 UTF-8 註解）。
 - `scripts/register_tasks.ps1` 要存成 UTF-8 with BOM；建立排程需要系統管理員，交給使用者執行，不要自己跑。
 

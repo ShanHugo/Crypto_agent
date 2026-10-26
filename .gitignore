@@ -22,3 +22,10 @@ __pycache__/
 .DS_Store
 .vscode/
 .idea/
+
+# 金鑰、密碼不要放在專案資料夾；萬一放了也不能進 git（repo 是公開的）
+/MAX API.txt
+*api*.txt
+*key*.txt
+*secret*
+*金鑰*

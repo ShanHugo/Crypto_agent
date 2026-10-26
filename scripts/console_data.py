@@ -124,7 +124,8 @@ def main() -> None:
         hc.agent('paper_rebalance', '模擬再平衡（01:35）', hc.check_paper(now, snaps(main_acc), runs, PAUSE_FILE.exists())),
         hc.agent('paper_report', '早上報告（08:30）', hc.check_report(now, hc.parse_runs(logs['paper_report']), webhook_set, start)),
         hc.agent('system', '系統與安全', hc.check_system(env_tracked(), {k: '\n'.join(v) for k, v in logs.items()},
-                                                    holdout, last_bar(), now)),
+                                                    holdout, last_bar(), now,
+                                                    hc.stray_secret_files([p.name for p in ROOT.iterdir() if p.is_file()]))),
         shadow_agent,
     ]
     out = {
