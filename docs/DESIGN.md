@@ -399,9 +399,38 @@ Crypto_Robot/
 - 規則失效標準也事先訂定；觸發時健康監控亮 🔴，處理順序同 Stock_Robot：先排除程式或資料錯誤 → 停止照抄 → 模擬帳戶繼續跑、檢討規則。
 - 想試的變化（例如死叉出場、不同停損）放進影子帳戶並行觀察，不直接改規則。
 
-### 6.5 接真單的條件
+### 6.5 真單分階段上線（2026-10-26 使用者決定）
 
-照抄標準全部達成後，才考慮切 LIVE，而且先用小額。切換前的檢查清單（金鑰權限、IP 白名單、熔斷演練、對帳演練、`unhalt` 演練）到時另外寫。
+使用者有閒錢了，決定用真錢執行主帳戶的規則 `rebal3-eth50-cashusdt75-band5`，**分階段上線，第一階段 6,000 元**。
+已知限制要記在這裡：這組規則只在研究期勉強通過（三年多 6.6 個百分點、後半期只多 0.6），沒有考卷驗證；使用者明確表示不需要贏過一直持有。
+
+**MAX 私有 API 查核（2026-10-26，官方文件 https://max-api.maicoin.com/doc/v3.html 與 `/api/doc/external/v3` 規格）**
+
+- 認證：參數加上 `nonce`（毫秒時間戳，和伺服器差 30 秒內、不可重複）與 `path`，轉 JSON → Base64 當 payload → 用 Secret Key 做 HMAC-SHA256（hex）當 signature；
+  header 帶 `X-MAX-ACCESSKEY`、`X-MAX-PAYLOAD`、`X-MAX-SIGNATURE`。GET 參數放網址、POST／DELETE 放 body。
+- 帳戶：`GET /api/v3/info`（含目前手續費等級）、`GET /api/v3/wallet/spot/accounts`（餘額）。
+- 下單：`POST /api/v3/wallet/spot/order`，必填 `market`、`side`、`volume`（幣的數量）；`ord_type` 有 `market`、`limit`、`ioc_limit` 等；
+  `client_oid` 最長 36 字元、24 小時內重複會被拒絕；下單成功只代表「已受理」，要用 `GET /api/v3/order?client_oid=` 查實際成交。
+- 取消：`DELETE /api/v3/order`、`DELETE /api/v3/wallet/spot/orders`；查詢：`orders/open`、`orders/closed`、`trades`。
+- 系統狀態：`GET https://status-api-max.maicoin.com/api/status/max-api`（`online`／`maintenance`）。
+
+**階段**
+
+| 階段 | 誰 | 內容 | 進入下一階段的條件 |
+|---|---|---|---|
+| 0 準備 | 營運者 | 在 MAX 建 API 金鑰，**先只開查詢（讀取）權限、不開提領**，設 IP 白名單；把 `MAX_API_KEY`、`MAX_API_SECRET` 自己填進 `Crypto_Robot/.env`（不要貼到對話裡） | 金鑰可用 |
+| 1 唯讀 | 開發者 | 私有 API 連線層（簽章、餘額、手續費等級、訂單與成交查詢），操作台顯示真實餘額，健康檢查加「金鑰權限沒有提領」「`.env` 沒進 git」 | 營運者確認餘額正確 |
+| 2 小額真單 | 營運者入金 6,000 元、把金鑰加開交易權限（仍不開提領）；開發者實作真單執行 | 同一套規則，每天 01:35 用真實餘額判斷；下單用 `ioc_limit`（價格上限 = 中間價 ±0.5%，超過就不成交，避免凌晨盤口薄時滑價失控），`client_oid` 先寫入再送、逾時先查再補送；成交後對帳；真單與模擬並行，報告列出差異 | 跑滿 2 週、沒有 🔴、真單與模擬的成交價差在合理範圍；營運者決定加碼 |
+| 3 加碼 | 營運者 | 決定投入全部閒錢；開發者只改金額上限 | — |
+
+**真單的安全規則（實作時要做到）**
+
+- `LIVE=1` 且 `.env` 有 `LIVE_CONFIRM=I_UNDERSTAND` 才會下真單；任一項沒有就只跑模擬。
+- 下單前檢查：在 01:30～08:00、MAX 系統狀態 `online`、餘額讀得到、這次要買賣的金額不超過總權益的 60%（再平衡正常不會超過；超過代表資料或程式有問題）、
+  ETH 價格和前一天快照差距不超過 20%；任一項不過就不下單並在 08:30 推 🔴。
+- 同一天只做一次；有未完成的訂單就不再送新單；暫停檔對真單同樣有效。
+- 金鑰只從 `.env` 讀，紀錄檔與推送不能出現金鑰；健康檢查掃描紀錄檔。
+- 真單紀錄存 `state/live.db`，和模擬帳戶分開；交易所的實際餘額是唯一真相。
 
 ---
 
