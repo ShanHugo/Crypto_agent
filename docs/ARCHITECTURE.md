@@ -58,26 +58,41 @@
 
 ```mermaid
 flowchart LR
-  MAX[MAX 公開 API<br/>ETH/TWD・USDT/TWD 盤口・伺服器時間] --> PR
-  subgraph CR[Crypto_Robot（這個專案）]
-    PR[paper_rebalance<br/>01:35 判斷＋模擬成交<br/>失敗每小時重試到 07:35] --> DB[(state/paper_main.db<br/>主帳戶：ETH＋USDT＋台幣)]
-    PR --> SDB[(state/shadow_rebal2.db<br/>影子：ETH＋台幣)]
-    SDB --> RP
-    SDB --> CD
-    DB --> RP[paper_report<br/>08:30 讀當天結果]
-    DB --> CD[scripts/console_data.py<br/>只讀 JSON]
-    HC[health.py<br/>健康檢查] --> CD
-    LOG[logs/*.log] --> HC
-    LOG --> RP
+  subgraph MAXX[MAX 交易所]
+    PUB[公開 API<br/>盤口・市場資訊・伺服器時間]
+    PRIV[私有 API（.env 金鑰）<br/>餘額・下單・查單・取消<br/>金鑰沒開提領]
+    STAT[系統狀態 API]
   end
-  RP --> DC[Discord]
+  subgraph CR[Crypto_Robot（這個專案）]
+    PR[paper_rebalance<br/>01:35 起每小時重試到 07:35]
+    PR --> DB[(state/paper_main.db<br/>主模擬：ETH＋USDT＋台幣 band5)]
+    PR --> SDB[(state/shadow_rebal2.db<br/>影子：ETH＋台幣 band10)]
+    PR --> EX[live/executor.py<br/>真單：LIVE_TRADING 開才執行]
+    EX --> LDB[(state/live/live.db<br/>真單紀錄與訂單)]
+    PR --> RO[live/readonly.py<br/>真單之後讀真實餘額＋公開 IP]
+    RO --> BAL[(state/live/balances.jsonl<br/>＋public_ip.json)]
+    RPT[paper_report 08:30] --> BK[backup.py<br/>推送後備份]
+    DB & SDB & LDB & BAL --> RPT
+    DB & SDB & LDB & BAL --> CD[console_data.py<br/>只讀 JSON]
+    HC[health.py] --> CD
+    LOG[logs/*.log] --> HC & RPT
+  end
+  PUB --> PR
+  PUB --> EX
+  STAT --> EX
+  PRIV <--> EX
+  PRIV --> RO
+  RPT --> DC[Discord]
+  BK --> GD[(雲端硬碟<br/>.env 的 BACKUP_DIRS)]
   CD --> CON[Stock_Robot 操作台<br/>「虛擬貨幣」分頁]
+  CON -. 重新讀取真實餘額 .-> LC[live_check.py<br/>只查詢] --> BAL
   CON -. 暫停／恢復 .-> PAUSE[state/paper_rebalance.paused]
   PAUSE -.-> PR
 ```
 
-- 只用 MAX **公開** API，沒有任何金鑰；模擬成交用當下盤口逐檔吃單、扣 taker 0.16%。
-- 操作台用 Crypto_Robot 自己的 Python 執行 `console_data.py`，兩個專案不互相 import。
+- 模擬帳戶只用公開 API：用當下盤口逐檔吃單、扣 taker 0.16%。
+- 真單用 `.env` 的 MAX 金鑰（查詢＋交易，**沒開提領**）。只有 `live/executor.py` 用會下單的 `MaxTradingClient`；其他讀取一律用沒有交易方法的 `MaxPrivateClient`。
+- 操作台用 Crypto_Robot 自己的 Python 執行 `console_data.py`（只讀）與 `live_check.py`（只查詢），兩個專案不互相 import。
 - 研究工具（`lab/`、`scripts/research.py`、`scripts/fetch_bars.py`）是手動用，不在排程裡。
 
 ---
@@ -87,11 +102,34 @@ flowchart LR
 | 台北時間 | 排程（`\crypto_robot\`） | 做什麼 | 推送 |
 |---|---|---|---|
 | 01:30～08:00 | — | 使用者允許自動交易的時段（2026-10-26 由 07:30 延長） | — |
-| 01:35、02:35…07:35 | `paper_rebalance` | ETH 比例偏離 50% 達 10 個百分點就調回；同一天只成交一次，已成功的後續重試只會略過 | 不推送 |
-| 08:30 | `paper_report` | 讀當天凌晨的結果，附上失敗過的重試；整個時段都沒成功就推 🔴 附紀錄最後幾行；推送後備份 state/ 與 reports/ | Discord |
-| 隨時 | — | 操作台「虛擬貨幣」分頁：帳戶、健康、排程、紀錄 | 不推送 |
+| 01:35、02:35…07:35 | `paper_rebalance` | 主模擬 → 影子 → 真單 → 讀真實餘額（下圖）；每一步同一天只做一次，已完成的在重試時略過 | 不推送 |
+| 08:30 | `paper_report` | 讀當天凌晨的結果（模擬、影子、真單、真實餘額、失敗過的重試）；整個時段都沒成功就推 🔴；推送後備份 | Discord |
+| 隨時 | — | 操作台「虛擬貨幣」分頁：每分鐘自動刷新畫面；「重新讀取真實餘額」按鈕只查詢 | 不推送 |
+
+**01:35 一次執行的順序**（`scripts/paper_rebalance.py` 的 `run()`；順序有意義：讀餘額要在真單之後，快照才是交易後的狀態）
+
+```mermaid
+flowchart TD
+  S[開始] --> P0{暫停檔存在？}
+  P0 -- 是 --> X0[什麼都不做]
+  P0 -- 否 --> W{01:30～08:00？}
+  W -- 否 --> X1[不執行，exit 0]
+  W -- 是 --> M[抓 MAX 盤口與市場資訊]
+  M --> A1[主模擬帳戶 band5<br/>今天做過就略過]
+  A1 --> A2[影子帳戶 band10<br/>今天做過就略過]
+  A2 --> L{.env 開了真單？}
+  L -- 否 --> RD
+  L -- 是 --> G[今天已有紀錄？]
+  G -- 完成／擋下 --> RD
+  G -- 有訂單但沒跑完 --> RC[只對帳，不送新單] --> RD
+  G -- 沒有 --> GU{安全檢查<br/>時段・系統 online・沒有凍結<br/>上限 9,000・價格跳動 ≤ 20%・單筆 ≤ 60%}
+  GU -- 不過 --> BL[記錄 blocked，整天不下單] --> RD
+  GU -- 過 --> SL[先賣後買 ioc_limit ±0.5%<br/>client_oid 先記再送；結果不明先查、查不到不重送] --> RD
+  RD[讀真實餘額＋公開 IP<br/>今天排程讀過就略過] --> E[結束：任何一步失敗 exit 1，<br/>下一小時重試只補沒完成的]
+```
 
 排程用 S4U（不用登入 Windows），會把電腦從睡眠喚醒；某一次失敗（網路、MAX 維護、還沒喚醒）由下一小時的重試補上；整個時段電腦都關機才會漏跑，開機後補跑但過了 08:00 會自己略過。
+08:30 的備份寫到雲端硬碟，雲端硬碟電腦版要登入 Windows 才會掛上。
 
 ---
 
@@ -99,7 +137,7 @@ flowchart LR
 
 | Agent | 進入點 | 用到的程式 | 讀 | 寫 | 已知狀況自己處理 | 健康檢查 |
 |---|---|---|---|---|---|---|
-| 模擬再平衡 | `scripts/run_scheduled.cmd paper_rebalance` → `paper_rebalance.py` | `paper/multi_account.py`、`paper/fills.py`、`agents/strategy/rebalance_multi.py`、`exchange/max/public.py` | MAX 公開 API（ethtwd、usdttwd）、`state/paper_main.db`、暫停檔 | db、`logs\paper_rebalance.log` | 失敗每小時重試到 07:35、時段外不動作、同一天不重複、低於最低下單量不調整、深度不足只部分成交（記在備註） | 今天凌晨有執行（重試中／重試後成功為 🟡）、最近 7 天沒漏跑、上次結束代碼 0、備註 |
+| 模擬再平衡 | `scripts/run_scheduled.cmd paper_rebalance` → `paper_rebalance.py` | `paper/multi_account.py`、`paper/fills.py`、`agents/strategy/rebalance_multi.py`、`exchange/max/public.py` | MAX 公開 API（ethtwd、usdttwd）、`state/paper_main.db`、暫停檔（主帳戶 band5） | db、`logs\paper_rebalance.log` | 失敗每小時重試到 07:35、時段外不動作、同一天不重複、低於最低下單量不調整、深度不足只部分成交（記在備註） | 今天凌晨有執行（重試中／重試後成功為 🟡）、最近 7 天沒漏跑、上次結束代碼 0、備註 |
 | 早上報告 | `run_scheduled.cmd paper_report paper_rebalance --report` | `paper_rebalance.py` 的 `morning_text`、`notify/discord.py` | db、`logs\paper_rebalance.log`、`.env` | Discord、`logs\paper_report.log` | Discord 失敗只寫紀錄，不中斷 | webhook 已設定、今天 08:25 後有執行且結束代碼 0 |
 | 影子帳戶：兩資產（同一個排程） | `paper_rebalance.py` 在主帳戶之後執行 | `paper/multi_account.py`、`agents/strategy/rebalance_multi.py` | MAX 公開 API（ethtwd）、`state/shadow_rebal2.db` | `state/shadow_rebal2.db` | 失敗不影響主帳戶，回傳結束代碼 1 讓下一小時重試；同一天不重複 | 和主帳戶相同的「今天凌晨執行」等檢查 |
 | 真單（同一個排程，`.env` 開啟才執行） | `paper_rebalance.py` 在唯讀讀取之後執行 | `live/executor.py`、`exchange/max/private.py` 的 `MaxTradingClient` | MAX 私有 API、`.env`（LIVE_TRADING、LIVE_CONFIRM、LIVE_CAPITAL_CAP） | `state/live/live.db` | 安全檢查不過就整天不下單；同一天只做一次；結果不明不重送 | 今天有執行、沒被擋下、沒有 rejected／unknown 訂單 |
@@ -113,18 +151,24 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  A[08:30 推送 🔴<br/>或操作台分頁出現 🔴／🟡] --> B{檢查項目有<br/>「→ 建議」嗎？}
-  B -- 有，環境問題 --> C[照建議做<br/>例：開機／關睡眠／以系統管理員重跑 register_tasks.ps1]
-  C --> D[等下一個凌晨<br/>01:35 起每小時自動重試到 07:35]
-  D --> E{隔天 08:30 正常？}
+  A[08:30 推送有 🔴<br/>或操作台出現 🔴／🟡] --> T{跟真單或真錢有關？<br/>真單擋下・訂單 unknown・沒跑完}
+  T -- 是 --> T1[先到 MAX 網頁看實際餘額與訂單<br/>交易所是唯一真相]
+  T1 --> T2{有不明的成交或餘額不對？}
+  T2 -- 是 --> STOP[立刻停：.env 的 LIVE_TRADING 改空白<br/>或建立暫停檔] --> F
+  T2 -- 否 --> B
+  T -- 否 --> B{檢查項目有<br/>「→ 建議」嗎？}
+  B -- IP 變了 --> IP[MAX 白名單改新 IP<br/>→ live_check.py --accept-ip]
+  B -- 備份失敗 --> BKF[登入 Windows<br/>→ scripts/backup.py]
+  B -- 其他環境問題 --> C[照建議做<br/>開機・關睡眠・以系統管理員重跑 register_tasks.ps1]
+  IP & BKF & C --> D[等下一個凌晨<br/>或操作台按「重新讀取真實餘額」確認]
+  D --> E{恢復正常？}
   E -- 是 --> Z[結束]
   E -- 否 --> F
   B -- 沒有建議／結束代碼不是 0<br/>／安全問題 --> F[交給開發者]
-  F --> G[貼給 Claude：<br/>推送內容＋logs 最後一段<br/>或直接說「看 /paper-status」]
-  G --> H[Claude：用本文件第 4 節找到模組<br/>重現 → 修正 → 加測試]
-  H --> I[pytest＋--dry-run／--report --no-send]
-  I --> J[commit＋push]
-  J --> D
+  F --> G[貼給 Claude：推送內容＋logs 最後一段<br/>或說「看 /paper-status」「看 live_trade.py --status」]
+  G --> H[Claude：第 4 節找到模組；真單看第 3 節的執行順序<br/>重現 → 修正 → 加測試]
+  H --> I[pytest＋--dry-run／live_trade.py --plan／--report --no-send]
+  I --> J[commit（明確列檔名）＋push] --> D
 ```
 
 **診斷時先看哪裡**
