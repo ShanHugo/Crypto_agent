@@ -69,6 +69,8 @@
 
 ## 2. 技術選型與架構
 
+> 現況（2026-10-28）：2.1 照用；2.2～2.3 的常駐 Agent 沒有實作（現在用排程腳本），做槓桿需要隨時盯維持率時再評估；2.4 是目前的目錄。
+
 ### 2.1 選型
 
 | 項目 | 選擇 | 原因 |
@@ -110,35 +112,41 @@ Data ──BarClosed──▶ Strategy ──EntrySignal──▶ RiskGuard ─�
                              └──── Discord／健康檢查 ◀──── 所有事件 ─┘
 ```
 
-### 2.4 目錄（2026-10-26 現況）
+### 2.4 目錄（2026-10-28 現況）
 
-目前只有比例再平衡模擬帳戶在跑，用排程腳本、不用常駐 Agent。上面 2.2～2.3 的常駐 Agent 架構留作接真單或盤中交易時的設計；
+模擬帳戶、影子帳戶、真單都由排程腳本執行（01:35 與 08:30），不用常駐 Agent。上面 2.2～2.3 的常駐 Agent 架構沒有實作；
 當時建的空資料夾（risk／execution／monitor）和沒通過的研究程式已刪除，需要時從 git 歷史找回（ff7425a 以前）。
 
 ```
 Crypto_Robot/
-├─ docs/DESIGN.md             本文件
+├─ docs/                      DESIGN.md（本文件）、ARCHITECTURE.md（維運索引與流程圖）
 ├─ src/crypto_robot/
 │  ├─ core/                   資料格式、Decimal 工具、台北時間工具
-│  ├─ exchange/max/           MAX 公開 REST v3（市場、K 線、盤口、報價、伺服器時間）
+│  ├─ exchange/max/           MAX REST v3：public.py（行情）、private.py（簽章、餘額、下單、查單）
 │  ├─ agents/
 │  │  ├─ data/                K 線補資料、資料品質、日 K 合成
-│  │  └─ strategy/            比例再平衡（純函式，研究與模擬共用同一份）
+│  │  └─ strategy/            比例再平衡（純函式，研究、模擬、真單共用）：rebalance.py、rebalance_multi.py
 │  ├─ store/                  K 線快取（SQLite）
 │  ├─ notify/                 Discord（失敗不阻斷）
-│  ├─ paper/                  模擬帳戶：盤口模擬成交、比例再平衡帳戶
-│  └─ lab/                    研究：基準、統計、比例再平衡回測與考卷
-├─ scripts/                   fetch_bars、research、paper_rebalance、排程（run_scheduled.cmd、register_tasks.ps1）
+│  ├─ paper/                  模擬帳戶：盤口模擬成交、主帳戶與影子帳戶
+│  ├─ live/                   真單：executor.py（安全檢查、下單、對帳）、readonly.py（真實餘額、IP）
+│  ├─ lab/                    研究：基準、統計、比例再平衡回測與考卷
+│  ├─ health.py               各 Agent 的健康檢查（操作台與主管讀）
+│  ├─ weekly.py               每週事實檢討
+│  └─ backup.py               備份 state/ 與 reports/
+├─ scripts/                   paper_rebalance（01:35 與 08:30）、live_trade、live_check、weekly_review、console_data、
+│                             backup、fetch_bars、research、排程（run_scheduled.cmd、register_tasks.ps1）
 ├─ tests/
-├─ state/                     模擬帳戶、考卷結果（不進 git）
+├─ state/                     paper_main.db、shadow_rebal2.db、live/（真單 live.db、真實餘額、公開 IP）、research/、暫停檔（不進 git）
 ├─ data/                      K 線快取（不進 git）
 ├─ logs/                      排程紀錄（不進 git）
-└─ reports/                   研究報告（不進 git）
+└─ reports/                   研究報告、每週事實檢討（不進 git）
 ```
 
 ## 3. 交易規則
 
 > 本節是原始規格的 1h EMA 交叉規則。第一輪研究期 64 組全部未通過（6.3），程式已刪除，保留本節作為紀錄。
+> 現況（2026-10-28）：作廢，只留紀錄；3.6 的停損執行方式（狀態機防重複觸發、跳空也觸發），做槓桿防強制平倉時可參考。
 
 ### 3.1 標的與部位限制
 
@@ -189,6 +197,8 @@ Crypto_Robot/
 
 ## 4. RiskGuard 獨立風控
 
+> 現況（2026-10-28）：沒有實作。現貨再平衡的保護是真單的下單前檢查（6.5）；槓桿「最多賠 10,000 元就停」（6.6）需要類似的每日基準與熔斷，到時候重新訂門檻。
+
 ### 4.1 每日基準（equity_baseline）
 
 - 總權益 ＝ TWD 餘額（含凍結）＋ ETH 數量（含凍結）× 最後成交價。用 Decimal 計算。
@@ -224,6 +234,8 @@ Crypto_Robot/
 
 ## 5. 執行與 MAX 專屬安全要求
 
+> 現況（2026-10-28）：大部分已在真單實作（`live/executor.py`、`scripts/live_trade.py`）；5.2、5.7 已改成程式的實際做法；5.3、5.4、5.5、5.6 還沒逐條和程式核對。
+
 ### 5.1 禁止 float
 
 - 所有價格、數量、金額都用 `Decimal`。從 API 收到的值一律用字串建立 `Decimal`（`Decimal("76827.3")`，不用 `Decimal(76827.3)`）。
@@ -232,10 +244,11 @@ Crypto_Robot/
 
 ### 5.2 冪等性與 client_oid
 
-- 格式 `bot-v1-{YYYYMMDDHHMMSS}-{uuid4 前 8 碼}`，時間用 UTC，共 30 字元（≤ 36）。
-- 產生後**先寫入 SQLite 再送單**；重試時重用同一個 ID。
-- 送單逾時或連線中斷時，結果未知 → 先用 `client_oid` 查單，查到就以查到的為準，查不到才用同 ID 重送。
-- 交易所回覆「ID 重複」時，視為訂單已存在，改查狀態。實際錯誤碼與 24 小時唯一期間**待官方文件確認**（第 1 節）。
+- 格式 `cr2-{台北時間 YYYYMMDDHHMMSS}-{uuid4 前 8 碼}`，共 27 字元（≤ 36）（`new_client_oid`）。
+- 產生後**先寫入 SQLite 再送單**。
+- 交易所明確拒絕（4xx，不含 429）→ 標記 rejected，不重送。
+- 送單逾時、連線中斷、5xx／429，結果未知 → 用 `client_oid` 查單，以查到的為準；**查不到就標記 unknown 並停止，不重送**，08:30 推 🔴，等營運者到 MAX 確認。
+- 同一天已有訂單紀錄（例如送到一半當機）→ 重試時只對帳、不送新單。
 
 ### 5.3 訂單狀態機
 
@@ -266,9 +279,9 @@ Crypto_Robot/
 
 ### 5.7 DRY_RUN（模擬帳戶）
 
-- `DRY_RUN=1` 為預設；切到 `DRY_RUN=0` 時，還要再設 `LIVE_CONFIRM=I_UNDERSTAND` 才能啟動，避免改錯一個值就開始下真單。
+- 沒有 `DRY_RUN` 開關：模擬帳戶一直在跑；真單要 `.env` 同時有 `LIVE_TRADING=1` 和 `LIVE_CONFIRM=I_UNDERSTAND` 才會下單（`scripts/live_trade.py`），避免改錯一個值就開始下真單。
 - 模擬成交：市價單用當下 `depth` 逐檔吃單計算成交均價，扣 taker 手續費；深度不足以成交的部分視為未成交（會走重試流程）。
-- 模擬帳戶有自己的 SQLite 檔（`state/paper.db`），和真實帳戶的 `state/live.db` 完全分開。
+- 模擬帳戶有自己的 SQLite 檔（主帳戶 `state/paper_main.db`、影子 `state/shadow_rebal2.db`），和真單的 `state/live/live.db` 完全分開。
 
 ---
 
