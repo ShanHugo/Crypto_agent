@@ -229,7 +229,7 @@ flowchart TD
 | `state/live/balances.jsonl`、`state/live/public_ip.json` | 真實帳戶（唯讀）每日紀錄、白名單 IP（含公開 IP，只在本機） | 能（重新讀）；IP 用 `live_check.py --accept-ip` 重設 |
 | `state/paper_rebalance.db` | 2026-10-26 以前的兩資產主帳戶（已轉到 paper_main.db），只留作紀錄 | 不再寫入 |
 | `state/research/holdout.json` | 考卷期結果（只考一次） | **不能** |
-| `state/paper_rebalance.paused` | 有這個檔案就暫停 | 刪掉＝恢復 |
+| `state/paper_rebalance.paused` | 有這個檔案就暫停；主管（`../Cashflow_orchestrator`）遇到真單訂單 unknown／rejected、送單沒跑完會自動建立 | 刪掉＝恢復（由營運者決定） |
 | `data/bars.db` | K 線快取（1h、5 分） | 能（`fetch_bars.py` 重抓） |
 | `logs/*.log` | 排程輸出 | 可刪 |
 | `reports/research_*.md` | 研究報告 | 能（`research.py` 重跑） |
