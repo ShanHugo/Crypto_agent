@@ -40,7 +40,7 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 | 每週事實檢討（第 2 關的成績單，每週一 08:30 報告後） | `src/crypto_robot/weekly.py`（計算與文字）、`scripts/weekly_review.py`（讀資料、存 `reports/weekly_*.md`、推送）；只列數字，不加建議 |
 | 備份 | `src/crypto_robot/backup.py`、`scripts/backup.py`；08:30 報告推送後自動執行；目的地在 `.env` 的 `BACKUP_DIRS`（不要寫進 git） |
 | 真單執行與安全檢查 | `src/crypto_robot/live/executor.py`（`check_guards`、`plan_orders`、`run_live`）、`scripts/live_trade.py`（開關、設定、`--plan`）；紀錄 `state/live/live.db` |
-| 真實帳戶（唯讀）、IP 變動 | `src/crypto_robot/live/readonly.py`、`exchange/max/private.py`（只有查詢方法）、`scripts/live_check.py`（`--accept-ip`）；紀錄在 `state/live/`（含公開 IP，絕不進 git） |
+| 真實帳戶（唯讀）、IP 變動 | `src/crypto_robot/live/readonly.py`、`exchange/max/private.py` 的 `MaxPrivateClient`（只有查詢方法；會下單的是 `MaxTradingClient`）、`scripts/live_check.py`（`--accept-ip`）；紀錄在 `state/live/`（含公開 IP，絕不進 git） |
 | 研究 | `src/crypto_robot/lab/`（`rebalance_variants.py` 是事先訂定的組合與標準，看過結果後不得修改） |
 
 改再平衡參數會讓模擬帳戶前後不一致：先問使用者要「接著用舊帳戶」還是「重開帳戶（備份 `state/paper_main.db` 後刪除）」。

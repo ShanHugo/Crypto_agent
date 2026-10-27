@@ -1,4 +1,4 @@
-"""MAX 私有 REST v3：目前**只有查詢**（真單第一階段，DESIGN.md 6.5），刻意沒有下單、取消、提領的方法。
+"""MAX 私有 REST v3（DESIGN.md 6.5）：`MaxPrivateClient` 只有查詢；`MaxTradingClient` 多了下單、查單、取消，只給真單執行器用。都沒有提領方法。
 
 認證（官方文件 2026-10-26 查核）：參數加上 nonce（毫秒）與 path → JSON → Base64 = payload；
 HMAC-SHA256(secret, payload) 的 hex = signature；header 帶 X-MAX-ACCESSKEY／X-MAX-PAYLOAD／X-MAX-SIGNATURE。
