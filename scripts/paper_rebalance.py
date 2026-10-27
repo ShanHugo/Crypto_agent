@@ -329,6 +329,13 @@ async def report(no_send: bool) -> int:
     if not no_send:
         async with aiohttp.ClientSession() as session:
             await send(session, os.getenv('PAPER_WEBHOOK_URL') or os.getenv('DISCORD_WEBHOOK_URL'), text)
+        # 每週一：每週事實檢討（DESIGN.md 6.6 第 2 關）；失敗不影響備份，健康檢查會亮 🔴
+        if datetime.now(TAIPEI).weekday() == 0:
+            import weekly_review as wr       # scripts/weekly_review.py
+            try:
+                await wr.run(datetime.now(TAIPEI).date(), no_send=False)
+            except Exception as exc:     # noqa: BLE001
+                print(f'🔴 每週檢討失敗：{type(exc).__name__}: {exc}')
         # 推送後備份（08:30 通常已登入 Windows，雲端硬碟有掛上）；失敗只記錄，健康檢查會亮 🔴
         import backup as bk          # scripts/backup.py
         print('\n'.join(bk.lines(bk.run())))

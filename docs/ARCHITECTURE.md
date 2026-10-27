@@ -14,6 +14,7 @@
 | 備份失敗 | `scripts/backup.py`、`src/crypto_robot/backup.py`、`state\backup\last.json`、`.env` 的 `BACKUP_DIRS` | 7 |
 | 真單擋下、沒跑完、訂單 unknown | `scripts/live_trade.py --status`／`--plan`、`live/executor.py`、`state\live\live.db` | 4、5 |
 | 真實帳戶（唯讀）讀不到、IP 變了 | `scripts/live_check.py`（手動讀、`--accept-ip`）、`live/readonly.py`、`state\live\` | 4、5 |
+| 每週檢討沒推、數字怪 | `scripts/weekly_review.py --no-send`、`src/crypto_robot/weekly.py`、`reports\weekly_*.md` | 4 |
 | 影子帳戶（兩資產）怪 | `state\shadow_rebal2.db`、`paper/multi_account.py`；設定在 `paper_rebalance.py` 的 `SHADOW` | 4 |
 | 想改規則參數、資金、排程時間、通知內容 | `CLAUDE.md` 的「要改什麼，改哪裡」 | 6 |
 | 操作台分頁壞掉 | `scripts/console_data.py`（資料）；Stock_Robot `src/web/console.py` 的 `/api/crypto`、`templates/console.html` 的 `loadCrypto` | 2、6 |
@@ -72,6 +73,10 @@ flowchart LR
     PR --> RO[live/readonly.py<br/>真單之後讀真實餘額＋公開 IP]
     RO --> BAL[(state/live/balances.jsonl<br/>＋public_ip.json)]
     RPT[paper_report 08:30] --> BK[backup.py<br/>推送後備份]
+    RPT -- 每週一 --> WK[weekly_review.py<br/>每週事實檢討・只列數字]
+    DB & LDB --> WK
+    WK --> WR[(reports/weekly_*.md)]
+    WR --> CD
     DB & SDB & LDB & BAL --> RPT
     DB & SDB & LDB & BAL --> CD[console_data.py<br/>只讀 JSON]
     HC[health.py] --> CD
@@ -83,6 +88,7 @@ flowchart LR
   PRIV <--> EX
   PRIV --> RO
   RPT --> DC[Discord]
+  WK --> DC
   BK --> GD[(雲端硬碟<br/>.env 的 BACKUP_DIRS)]
   CD --> CON[Stock_Robot 操作台<br/>「虛擬貨幣」分頁]
   CON -. 重新讀取真實餘額 .-> LC[live_check.py<br/>只查詢] --> BAL
@@ -103,7 +109,7 @@ flowchart LR
 |---|---|---|---|
 | 01:30～08:00 | — | 使用者允許自動交易的時段（2026-10-26 由 07:30 延長） | — |
 | 01:35、02:35…07:35 | `paper_rebalance` | 主模擬 → 影子 → 真單 → 讀真實餘額（下圖）；每一步同一天只做一次，已完成的在重試時略過 | 不推送 |
-| 08:30 | `paper_report` | 讀當天凌晨的結果（模擬、影子、真單、真實餘額、失敗過的重試）；整個時段都沒成功就推 🔴；推送後備份 | Discord |
+| 08:30 | `paper_report` | 讀當天凌晨的結果（模擬、影子、真單、真實餘額、失敗過的重試）；整個時段都沒成功就推 🔴；**每週一**再推一則每週事實檢討；最後備份 | Discord |
 | 隨時 | — | 操作台「虛擬貨幣」分頁：每分鐘自動刷新畫面；「重新讀取真實餘額」按鈕只查詢 | 不推送 |
 
 **01:35 一次執行的順序**（`scripts/paper_rebalance.py` 的 `run()`；順序有意義：讀餘額要在真單之後，快照才是交易後的狀態）
@@ -143,6 +149,7 @@ flowchart TD
 | 真單（同一個排程，`.env` 開啟才執行） | `paper_rebalance.py` 在唯讀讀取之後執行 | `live/executor.py`、`exchange/max/private.py` 的 `MaxTradingClient` | MAX 私有 API、`.env`（LIVE_TRADING、LIVE_CONFIRM、LIVE_CAPITAL_CAP） | `state/live/live.db` | 安全檢查不過就整天不下單；同一天只做一次；結果不明不重送 | 今天有執行、沒被擋下、沒有 rejected／unknown 訂單 |
 | 真實帳戶（唯讀，同一個排程） | `paper_rebalance.py` 在真單之後執行（快照才是交易後的狀態）；操作台「重新讀取真實餘額」按鈕會呼叫 `live_check.py` | `live/readonly.py`、`exchange/max/private.py`（只有查詢方法） | `.env` 的 MAX 金鑰、MAX 私有 API、公開 IP | `state/live/balances.jsonl` | 一天只讀一次；失敗只記錄，不影響模擬帳戶 | 今天凌晨有讀到、公開 IP 和白名單相同、讀取成功 |
 | 備份（`paper_report` 推送後） | `paper_rebalance.py --report` → `scripts/backup.py` | `src/crypto_robot/backup.py` | `state/`、`reports/`（不含 `.env`） | `BACKUP_DIRS` 的壓縮檔（保留 40 份）、`state/backup/last.json` | 一個目的地失敗不影響其他；SQLite 先做一致快照再壓縮 | 每個目的地成功、3 天內有備份 |
+| 每週事實檢討（`paper_report` 每週一，備份之前） | `paper_rebalance.py --report` → `scripts/weekly_review.py`（也可手動 `--no-send`／`--date`） | `src/crypto_robot/weekly.py`（純函式） | `state/live/live.db`、`state/paper_main.db` | `reports/weekly_YYYYMMDD.md`、Discord | 只列數字、不給建議；失敗不影響備份 | 最近一個週一（2026-11-02 起）有產生 |
 | 系統與安全（不是排程） | 操作台開分頁時 | `health.py` 的 `check_system` | git、logs、考卷檔、K 線快取 | — | — | `.env` 沒進 git、紀錄檔沒有 webhook |
 
 ---
@@ -159,6 +166,8 @@ flowchart TD
   T -- 否 --> B{檢查項目有<br/>「→ 建議」嗎？}
   B -- IP 變了 --> IP[MAX 白名單改新 IP<br/>→ live_check.py --accept-ip]
   B -- 備份失敗 --> BKF[登入 Windows<br/>→ scripts/backup.py]
+  B -- 週一沒有每週檢討 --> WKF[scripts/weekly_review.py --date 那個週一<br/>還是失敗就交給開發者]
+  WKF --> E
   B -- 其他環境問題 --> C[照建議做<br/>開機・關睡眠・以系統管理員重跑 register_tasks.ps1]
   IP & BKF & C --> D[等下一個凌晨<br/>或操作台按「重新讀取真實餘額」確認]
   D --> E{恢復正常？}
@@ -223,7 +232,8 @@ flowchart TD
 | `state/paper_rebalance.paused` | 有這個檔案就暫停 | 刪掉＝恢復 |
 | `data/bars.db` | K 線快取（1h、5 分） | 能（`fetch_bars.py` 重抓） |
 | `logs/*.log` | 排程輸出 | 可刪 |
-| `reports/*.md` | 研究報告 | 能（`research.py` 重跑） |
+| `reports/research_*.md` | 研究報告 | 能（`research.py` 重跑） |
+| `reports/weekly_*.md` | 每週事實檢討 | 能（`weekly_review.py --date` 重算） |
 | `.env` | Discord webhook | 自己保管（等同密碼） |
 
 `state/`、`data/`、`logs/`、`reports/`、`.env` 都不進 git。**備份**：每天 08:30 報告推送後，把 `state/` 與 `reports/` 壓縮到 `.env` 的 `BACKUP_DIRS`（保留 40 份，不含 `.env`）。

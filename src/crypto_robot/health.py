@@ -133,6 +133,21 @@ def check_report(now: datetime, runs: list[dict], webhook_set: bool, account_sta
     return out
 
 
+WEEKLY_SINCE = date(2026, 11, 2)     # 第一次每週事實檢討（週一）
+
+
+def check_weekly(now: datetime, done: set[date]) -> list[Check]:
+    """每週一 08:30 報告之後的每週事實檢討；done：已有 reports/weekly_YYYYMMDD.md 的日期。"""
+    last = expected_date(now, REPORT_AT)
+    monday = last - timedelta(days=last.weekday())
+    if monday < WEEKLY_SINCE:
+        return [Check('每週檢討', 'ok', f'第一次在 {WEEKLY_SINCE} 08:30 報告之後')]
+    if monday not in done:
+        return [Check('每週檢討', 'red', f'{monday}（週一）沒有產生每週檢討',
+                      '看 logs/paper_report.log；可以手動執行 scripts/weekly_review.py --date ' + monday.isoformat())]
+    return [Check('每週檢討', 'ok', f'{monday} 已推送（reports/weekly_{monday:%Y%m%d}.md）')]
+
+
 def check_live(now: datetime, records: list[dict], keys_set: bool, ref_ip_set: bool) -> list[Check]:
     """真實帳戶（唯讀，真單第一階段）：凌晨有讀到餘額、金鑰可用、公開 IP 沒變。records：state/live/balances.jsonl，由舊到新。"""
     if not keys_set:

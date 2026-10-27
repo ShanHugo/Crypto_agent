@@ -35,6 +35,7 @@ LIVE_RECORDS = ROOT / 'state' / 'live' / 'balances.jsonl'   # 真實帳戶（唯
 LIVE_IP = ROOT / 'state' / 'live' / 'public_ip.json'
 LIVE_DB = ROOT / 'state' / 'live' / 'live.db'
 BACKUP_STATUS = ROOT / 'state' / 'backup' / 'last.json'
+REPORTS = ROOT / 'reports'
 LOGS = {'paper_rebalance': ROOT / 'logs' / 'paper_rebalance.log', 'paper_report': ROOT / 'logs' / 'paper_report.log'}
 
 
@@ -107,6 +108,29 @@ def account_data(key: str) -> dict | None:
     }
 
 
+def weekly_files() -> dict:
+    """每週事實檢討：日期 → 檔案（reports/weekly_YYYYMMDD.md）。"""
+    out = {}
+    for p in sorted(REPORTS.glob('weekly_*.md')):
+        try:
+            out[datetime.strptime(p.stem[7:], '%Y%m%d').date()] = p
+        except ValueError:
+            continue
+    return out
+
+
+def weekly_latest() -> dict | None:
+    """最新一份每週檢討；還沒有就用目前資料即時算一份（標成預覽，不存檔）。"""
+    files = weekly_files()
+    if files:
+        day = max(files)
+        return {'date': day.isoformat(), 'preview': False, 'text': files[day].read_text(encoding='utf-8').strip()}
+    import weekly_review as wr       # scripts/weekly_review.py：只讀資料庫，不連網
+    from crypto_robot import weekly
+    today = datetime.now(TAIPEI).date()
+    return {'date': today.isoformat(), 'preview': True, 'text': weekly.text(wr.build(today))}
+
+
 def snaps(acc: dict | None) -> list[dict]:
     return [{'date': c['date'], 'action': c['action'], 'note': c['note']} for c in acc['curve']] if acc else []
 
@@ -140,7 +164,8 @@ def main() -> None:
                     hc.agent('shadow', '影子帳戶：兩資產', [hc.Check('影子帳戶', 'ok', '下一個凌晨 01:35 和主帳戶一起建立')]))
     agents = [
         hc.agent('paper_rebalance', '模擬再平衡（01:35）', hc.check_paper(now, snaps(main_acc), runs, PAUSE_FILE.exists())),
-        hc.agent('paper_report', '早上報告（08:30）', hc.check_report(now, hc.parse_runs(logs['paper_report']), webhook_set, start)),
+        hc.agent('paper_report', '早上報告（08:30）', hc.check_report(now, hc.parse_runs(logs['paper_report']), webhook_set, start)
+                 + hc.check_weekly(now, set(weekly_files()))),
         hc.agent('system', '系統與安全', hc.check_system(env_tracked(), {k: '\n'.join(v) for k, v in logs.items()},
                                                     holdout, last_bar(), now,
                                                     hc.stray_secret_files([p.name for p in ROOT.iterdir() if p.is_file()]))
@@ -161,6 +186,7 @@ def main() -> None:
                  'history': [{k: r.get(k) for k in ('date', 'time', 'source', 'ok', 'equity')} for r in live_records[-14:]]},
         'holdout': None if holdout is None else {k: holdout.get(k) for k in
                                                  ('variant', 'period', 'passed', 'rebalances', 'stats', 'static', 'hodl', 'halves', 'tested_at')},
+        'weekly': weekly_latest(),
         'health': {'agents': agents, 'overall': hc.overall(agents)},
         'logs': {k: [hc.WEBHOOK.sub('<webhook>/', ln) for ln in v[-80:]] for k, v in logs.items()},
     }
