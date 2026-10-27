@@ -253,12 +253,13 @@ async def run(dry_run: bool, ignore_window: bool) -> int:
             continue
         print(f'{acc["label"]}：{r["date"]} 已經執行過' if r['status'] == 'already' else message(r, acc['label']))
     if not dry_run:
-        await live_read({a: mid_price(books[m]) for a, m in MARKETS.items()}, now)
+        # 先下真單、再讀真實餘額：快照（08:30 報告與操作台）才會是交易後的狀態（2026-10-27 修正，之前順序相反）
         try:
             await live_trade(now)
         except Exception as exc:       # noqa: BLE001
             print(f'🔴 真單執行失敗：{type(exc).__name__}: {exc}')
             code = 1
+        await live_read({a: mid_price(books[m]) for a, m in MARKETS.items()}, now)
     return code
 
 
