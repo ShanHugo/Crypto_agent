@@ -170,7 +170,7 @@ def check_live(now: datetime, records: list[dict], keys_set: bool, ref_ip_set: b
         out.append(Check('公開 IP', 'ok', '和白名單相同'))
     if not last['ok']:
         out.append(Check('真實餘額', 'red', f'{last["date"]} {last["time"]} 讀取失敗：{last["error"]}',
-                         '401／2001 多半是金鑰錯誤或 IP 不在白名單；到 MAX 的 API 金鑰頁面確認'))
+                         '401／403／2001 多半是金鑰錯誤或 IP 不在白名單（IP 變了時實際是 403）；到 MAX 的 API 金鑰頁面確認'))
     else:
         out.append(Check('真實餘額', 'ok', f'{last["date"]} {last["time"]} 估值 {float(last["equity"]):,.0f} 元'))
     return out
