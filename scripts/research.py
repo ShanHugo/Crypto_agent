@@ -33,62 +33,14 @@ def git_commit() -> str:
         return 'unknown'
 
 
-MOMENTUM_HOLDOUT = ROOT / 'state' / 'research' / 'holdout_momentum.json'     # 第十輪的考卷（山寨幣 2024-07 起，只考一次）
-
-
-def momentum(args) -> None:
-    """第十輪：山寨幣追漲幅前幾名。日 K 先用 fetch_bars.py --market <幣>twd --period 1440 補齊。"""
-    from crypto_robot.lab import momentum_research as mr, momentum_variants as mv
-    store = BarStore(args.db)
-    data = {c: store.load(f'{c}twd', mv.PERIOD_MIN) for c in (*mv.COINS, mv.BENCH)}
-    store.close()
-    if not data[mv.BENCH]:
-        sys.exit('快取沒有日 K，先執行 scripts/fetch_bars.py --market ethtwd --period 1440（其他幣同樣）')
-    if args.stage == 'dev':
-        rows = [mr.evaluate(data, v, mv.DEV_START, mv.DEV_END, mv.DEV_MID) for v in mv.all_variants()]
-        text = mr.dev_report(rows, datetime.now().strftime('%Y-%m-%d %H:%M'))
-        out = ROOT / 'reports' / f'research_dev_momentum_{datetime.now():%Y%m%d}.md'
-        out.parent.mkdir(exist_ok=True)
-        out.write_text(text, encoding='utf-8')
-        print(text)
-        print(f'已寫入 {out}')
-        return
-    if MOMENTUM_HOLDOUT.exists():
-        print('考卷期已經考過，以下是當時的結果（不重算）：')
-        print(MOMENTUM_HOLDOUT.read_text(encoding='utf-8'))
-        return
-    if not args.variant:
-        sys.exit('考卷期要指定 --variant（研究期通過組中 t 最高的一組）')
-    commit = git_commit()
-    if commit.endswith('-dirty'):
-        sys.exit('src/ 有未 commit 的修改；先 commit，考卷結果才能對應到確切的程式版本')
-    v = mv.by_name(args.variant)
-    if input(f'考卷期只能考一次，確定用 {v.name} 嗎？輸入 yes 繼續：').strip() != 'yes':
-        sys.exit('已取消')
-    end = data[mv.BENCH][-1].ts + mv.DAY_MS
-    mid = (mv.HOLDOUT_START + end) // 2 // mv.DAY_MS * mv.DAY_MS
-    r = mr.evaluate(data, v, mv.HOLDOUT_START, end, mid)
-    ok, fails = mv.passes_holdout(r['total'], r['basket_total'], r['eth_total'], r['random_pct'], r['mdd'], r['eth_mdd'])
-    record = {'variant': v.name, 'commit': commit, 'tested_at': datetime.now().isoformat(timespec='seconds'),
-              **{k: r[k] for k in ('traded', 'total', 'basket_total', 'eth_total', 't', 'random_pct', 'mdd', 'eth_mdd')},
-              'passed': ok, 'fails': fails}
-    MOMENTUM_HOLDOUT.parent.mkdir(parents=True, exist_ok=True)
-    MOMENTUM_HOLDOUT.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
-    print(json.dumps(record, ensure_ascii=False, indent=2))
-
-
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
-    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'momentum'], default='rebalance')
+    ap.add_argument('--family', choices=['rebalance', 'rebalance3'], default='rebalance')
     ap.add_argument('--stage', choices=['dev', 'holdout'], required=True)
     ap.add_argument('--variant', help='考卷期要考的規則名稱（見研究期報告）')
     ap.add_argument('--db', default=str(ROOT / 'data' / 'bars.db'))
     args = ap.parse_args()
-
-    if args.family == 'momentum':
-        momentum(args)
-        return
 
     if args.family == 'rebalance3':
         if args.stage == 'holdout':
