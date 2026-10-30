@@ -74,14 +74,77 @@ def breakout(args) -> None:
     print(json.dumps(record, ensure_ascii=False, indent=2))
 
 
+FNG_URL = 'https://api.alternative.me/fng/?limit=0&format=json'
+FEAR_HOLDOUT = ROOT / 'state' / 'research' / 'holdout_fear.json'     # 第八輪的考卷（BTC／ETH，只考一次）
+
+
+def fear(args) -> None:
+    """第八輪：恐懼與貪婪指數＋RSI。每次執行重新下載指數存到 data/fng.json；日 K 先用 fetch_bars.py --period 1440 補齊。"""
+    import aiohttp
+    import asyncio
+    from crypto_robot.lab import fear_research as fr, fear_variants as fv
+
+    async def download() -> dict:
+        async with aiohttp.ClientSession() as s:
+            async with s.get(FNG_URL, timeout=aiohttp.ClientTimeout(total=60)) as r:
+                return await r.json(content_type=None)
+
+    payload = asyncio.run(download())
+    (ROOT / 'data').mkdir(exist_ok=True)
+    (ROOT / 'data' / 'fng.json').write_text(json.dumps(payload), encoding='utf-8')
+    fng = fr.parse_fng(payload)
+    store = BarStore(args.db)
+    data = {a: store.load(f'{a}twd', fv.PERIOD_MIN) for a in fv.ASSETS}
+    store.close()
+    if not all(data.values()):
+        sys.exit('快取沒有日 K，先執行 scripts/fetch_bars.py --market btctwd --period 1440（ethtwd 同樣）')
+    if args.stage == 'dev':
+        rows = [fr.evaluate(data, fng, v, fv.DEV_START, fv.DEV_END, fv.DEV_MID) for v in fv.all_variants()]
+        text = fr.dev_report(rows, datetime.now().strftime('%Y-%m-%d %H:%M'))
+        out = ROOT / 'reports' / f'research_dev_fear_{datetime.now():%Y%m%d}.md'
+        out.parent.mkdir(exist_ok=True)
+        out.write_text(text, encoding='utf-8')
+        print(text)
+        print(f'已寫入 {out}')
+        return
+    if FEAR_HOLDOUT.exists():
+        print('考卷期已經考過，以下是當時的結果（不重算）：')
+        print(FEAR_HOLDOUT.read_text(encoding='utf-8'))
+        return
+    if not args.variant:
+        sys.exit('考卷期要指定 --variant（研究期通過組中 t 最高的一組）')
+    commit = git_commit()
+    if commit.endswith('-dirty'):
+        sys.exit('src/ 有未 commit 的修改；先 commit，考卷結果才能對應到確切的程式版本')
+    v = fv.by_name(args.variant)
+    if input(f'考卷期只能考一次，確定用 {v.name} 嗎？輸入 yes 繼續：').strip() != 'yes':
+        sys.exit('已取消')
+    end = min(b[-1].ts for b in data.values()) + fv.DAY_MS
+    mid = (fv.HOLDOUT_START + end) // 2 // fv.DAY_MS * fv.DAY_MS
+    r = fr.evaluate(data, fng, v, fv.HOLDOUT_START, end, mid)
+    per = {}
+    for a, x in r['assets'].items():
+        ok, fails = fv.passes_holdout(x['n'], x['mean_excess'], x['random_pct'])
+        per[a] = {'n': x['n'], 'mean_excess': x['mean_excess'], 't': x['t'], 'random_pct': x['random_pct'], 'passed': ok, 'fails': fails}
+    record = {'variant': v.name, 'commit': commit, 'tested_at': datetime.now().isoformat(timespec='seconds'),
+              'assets': per, 'passed': all(p['passed'] for p in per.values())}
+    FEAR_HOLDOUT.parent.mkdir(parents=True, exist_ok=True)
+    FEAR_HOLDOUT.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
+    print(json.dumps(record, ensure_ascii=False, indent=2))
+
+
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
-    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'rebalance3-1h', 'breakout'], default='rebalance')
+    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'rebalance3-1h', 'breakout', 'fear'], default='rebalance')
     ap.add_argument('--stage', choices=['dev', 'holdout'], required=True)
     ap.add_argument('--variant', help='考卷期要考的規則名稱（見研究期報告）')
     ap.add_argument('--db', default=str(ROOT / 'data' / 'bars.db'))
     args = ap.parse_args()
+
+    if args.family == 'fear':
+        fear(args)
+        return
 
     if args.family == 'breakout':
         breakout(args)
