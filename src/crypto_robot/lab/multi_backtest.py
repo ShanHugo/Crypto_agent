@@ -8,7 +8,6 @@
 """
 from __future__ import annotations
 
-from collections.abc import Callable
 from decimal import Decimal
 
 from crypto_robot.agents.strategy.rebalance_multi import MultiParams, needs_rebalance, target_deltas
@@ -27,13 +26,8 @@ def align(daily: dict[str, list[Bar]]) -> list[tuple[int, dict[str, Bar]]]:
 
 
 def run_multi(daily: dict[str, list[Bar]], start_ms: int, end_ms: int, p: MultiParams, cp: CostParams,
-              *, initial: Decimal = Decimal(1_000_000), rebalance: bool = True,
-              can_trade: Callable[[int], bool] | None = None) -> Result:
-    """trades 的 reason：init（期初建倉）、rebal-buy、rebal-sell；entry_price 是成交價，qty 正買負賣。
-
-    K 線不一定是日 K（第六輪用 1h K：每小時收盤判斷、下一小時開盤成交）。
-    can_trade(ts) 為 False 的 K 線不再平衡，觸發會一直保留到可以交易的那根開盤再重算。
-    """
+              *, initial: Decimal = Decimal(1_000_000), rebalance: bool = True) -> Result:
+    """trades 的 reason：init（期初建倉）、rebal-buy、rebal-sell；entry_price 是成交價，qty 正買負賣。"""
     assets = [a for a, _ in p.targets]
     res = Result(initial)
     cash = initial
@@ -73,7 +67,7 @@ def run_multi(daily: dict[str, list[Bar]], start_ms: int, end_ms: int, p: MultiP
         if not started:
             trade(ts, bars, True)
             started = True
-        elif pending and (can_trade is None or can_trade(ts)):
+        elif pending:
             trade(ts, bars, False)
         closes = {a: bars[a].close for a in assets}
         pending = rebalance and needs_rebalance(qty, cash, closes, p)

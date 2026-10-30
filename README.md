@@ -2,7 +2,7 @@
 
 個人自用、只操作自己帳戶。延續 Stock_Robot 的做法：**先研究、再模擬、事先訂好照抄標準，達標才考慮真錢**。
 
-- 目前狀態：五輪研究只留下比例再平衡；**模擬帳戶**（主帳戶＋影子，各 6,000 台幣）2026-10-26 開始，**真單**（同一套規則，6,000 台幣）2026-10-27 開始。進度見 [docs/DESIGN.md](docs/DESIGN.md) 第 8 節。
+- 目前狀態：九輪研究只留下比例再平衡；**模擬帳戶**（主帳戶＋影子，各 6,000 台幣）2026-10-26 開始，**真單**（同一套規則，6,000 台幣）2026-10-27 開始。進度見 [docs/DESIGN.md](docs/DESIGN.md) 第 8 節。
 - 維運（Agent 分工、出錯流程圖、先看哪裡）：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - 設計與規格：[docs/DESIGN.md](docs/DESIGN.md)（第 0 節列出與原始規格不同的地方，已確認）。
 - 真單：`.env` 設 `LIVE_TRADING=1` 與 `LIVE_CONFIRM=I_UNDERSTAND` 才會下單（MAX 金鑰只開查詢＋交易，不開提領），沒設就只跑模擬。2026-10-27 起真單開啟，階段上限 9,000 元。
@@ -44,7 +44,7 @@ Stock_Robot 的本機操作台有「虛擬貨幣」分頁，顯示帳戶、Agent
 .venv\Scripts\python.exe scripts/research.py --stage dev       # 比例再平衡研究期 2021～2023：12 組規則，報告寫到 reports/
 .venv\Scripts\python.exe scripts/research.py --stage holdout   # 考卷期（已考過）：顯示當時的結果
 ```
-四輪研究（1h 均線交叉、日 K 趨勢／買低賣高、比例再平衡、凌晨時段買低賣高）的結果記在 docs/DESIGN.md 6.3；沒通過的三輪程式已刪除，留在 git 歷史。規則組合與通過標準在 `src/crypto_robot/lab/rebalance_variants.py`（看結果前訂定）。考卷結果存在 `state/research/holdout.json`，之後執行只顯示當時的結果。
+九輪研究（均線交叉、日 K 趨勢、比例再平衡、凌晨買低賣高、三資產再平衡、每小時檢查、山寨幣突破、恐懼與貪婪指數、加入 BTC）的結果記在 docs/DESIGN.md 6.3；只有比例再平衡留下，沒通過的程式已刪除，留在 git 歷史。規則組合與通過標準在 `src/crypto_robot/lab/rebalance_variants.py`（看結果前訂定）。考卷結果存在 `state/research/holdout.json`，之後執行只顯示當時的結果。
 
 ## 測試
 

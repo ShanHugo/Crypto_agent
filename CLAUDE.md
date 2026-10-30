@@ -11,7 +11,7 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 - **主模擬帳戶**（不是真單）：三資產 `rebal3-eth50-cashusdt75-band5`（ETH 50%、USDT 37.5%、台幣 12.5%，任何一項偏離 5 個百分點全部調回），6,000 台幣；2026-10-26 由原本的兩資產帳戶轉換過來（`--migrate`），狀態在 `state/paper_main.db`。舊的 `state/paper_rebalance.db` 只留作紀錄。
 - 排程：01:35 執行 `paper_rebalance`（不推送，失敗每小時重試到 07:35）、08:30 執行 `paper_report`（推送 Discord）。
 - **影子帳戶**（同一個排程、同樣 6,000 元，只記錄）：原本的兩資產 `rebal-eth50-band10`（ETH 50%、台幣 50%），2026-10-27 凌晨重新建倉；狀態在 `state/shadow_rebal2.db`。
-- 五輪研究共 122 組：只有比例再平衡留下。**考卷期（2024-01-01 起）已用掉**，結果在 `state/research/holdout.json`。
+- 九輪研究共 138 組：只有比例再平衡留下（2026-10-30 營運者同意先停止找新規則）。**ETH 考卷期（2024-01-01 起）已用掉**，結果在 `state/research/holdout.json`。
 - **真單**：**2026-10-27 01:35 起開啟**（第一階段 6,000 元，上限 9,000 元），規則同主帳戶；計畫與 MAX 私有 API 查核在 `docs/DESIGN.md` 6.5。金鑰開查詢＋交易（沒開提領）。由 `.env` 的 `LIVE_TRADING=1`＋`LIVE_CONFIRM=I_UNDERSTAND` 開啟，每天 01:35 執行；預覽用 `scripts/live_trade.py --plan`、紀錄用 `--status`。跑滿 2 週（約 11/10）沒有 🔴 才討論加碼；金鑰絕不經過對話。
 - USDT 開了 MAX「閒置資產收益」（2026-10-28，APR 1%，不鎖倉）：真單權益會略高於模擬帳戶。
 - 每週一 08:30 報告後產生每週事實檢討（第一次 2026-11-02）；主管（`../Cashflow_orchestrator`）每 3 小時檢查一次，跟真錢有關的 🔴 會自動建立暫停檔。
@@ -21,7 +21,7 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 
 - 自動交易只能在**台北時間 01:30～08:00**（使用者白天要用電腦；2026-10-26 由 07:30 延長到 08:00 給重試用）。
 - 價格、數量、金額一律 `Decimal`（`core/num.py`）；交易路徑不准出現 float。報告統計可以用 float。
-- 新研究：規則組合與通過標準**先寫好、先 commit，才跑結果**；沒通過不放寬標準。研究期資料（2021–2023）已看過四次。
+- 新研究：規則組合與通過標準**先寫好、先 commit，才跑結果**；沒通過不放寬標準。ETH 研究期資料（2021–2023）已看過六次以上。
 - `.env`（webhook 等同密碼）、`state/`、`data/`、`logs/`、`reports/` 不進 git；不要在輸出中印出 webhook 網址。
 - repo 是公開的（github.com/ShanHugo/Crypto_agent），只有 `main` 分支：改完 → 測試通過 → commit → push。
 - **commit 一律明確列出檔名，不用 `git add -A`／`git add .`**（2026-10-26 資料夾裡曾出現金鑰文字檔）；commit 內容不能有金鑰、webhook、使用者的公開 IP 或其他個資。
@@ -63,7 +63,7 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 ## 省 token
 
 - 維運問題（漏跑、沒推送、燈號）看 `docs/ARCHITECTURE.md`；它有快速索引、Agent 責任表、出錯流程圖。
-- `docs/DESIGN.md` 有 600 多行，**不要整份讀**：用 Grep 找需要的章節（第 0 節：和原始規格的差異；第 1 節：MAX API 查核；第 5 節：下單安全（client_oid、訂單狀態、金鑰）；6.3：五輪研究結果；6.4.1：模擬帳戶；6.5：真單；6.6：槓桿關卡；6.7：走勢預測草案）。兩個專案共用的主管在另一個 repo `../Cashflow_orchestrator`（設計在它的 `docs/DESIGN.md`）。
+- `docs/DESIGN.md` 有 600 多行，**不要整份讀**：用 Grep 找需要的章節（第 0 節：和原始規格的差異；第 1 節：MAX API 查核；第 5 節：下單安全（client_oid、訂單狀態、金鑰）；6.3：九輪研究結果；6.4.1：模擬帳戶；6.5：真單；6.6：槓桿關卡；6.7：走勢預測草案）。兩個專案共用的主管在另一個 repo `../Cashflow_orchestrator`（設計在它的 `docs/DESIGN.md`）。
 - 第 2～4 節大多是原始規格的常駐 Agent 與 EMA 規則，沒有實作，每節開頭有現況說明；改模擬帳戶或真單時不用看（2.4 目錄除外）。
-- 沒通過的研究程式已刪除，要找回就看 `git show ff7425a --stat`。
+- 沒通過的研究程式已刪除，要找回就看 `git show ff7425a --stat`（第 1、2、4 輪）、`git show b112076 --stat`（第 6～9 輪）。
 - 常用流程用 skill：`/paper-status`（看模擬帳戶）、`/ship`（測試＋commit＋push）、`/research-round`（新一輪研究的固定步驟）。
