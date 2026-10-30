@@ -133,14 +133,64 @@ def fear(args) -> None:
     print(json.dumps(record, ensure_ascii=False, indent=2))
 
 
+BASKET_HOLDOUT = ROOT / 'state' / 'research' / 'holdout_basket.json'     # 第九輪的考卷（2024-07 起，只考一次）
+
+
+def basket(args) -> None:
+    """第九輪：BTC＋ETH＋USDT＋台幣 再平衡。1h K 線先用 fetch_bars.py --market btctwd --since 2020-12-01 補齊。"""
+    from crypto_robot.lab import basket_research as kr, basket_variants as kv
+    store = BarStore(args.db)
+    hourly = {a: store.load(m, periods.PERIOD_MIN) for a, m in kv.MARKETS.items()}
+    store.close()
+    if not all(hourly.values()):
+        sys.exit('快取缺 K 線，先執行 scripts/fetch_bars.py --market btctwd --since 2020-12-01（ethtwd、usdttwd 同樣）')
+    if args.stage == 'dev':
+        text = kr.dev_report(kr.run_dev(hourly), datetime.now().strftime('%Y-%m-%d %H:%M'))
+        out = ROOT / 'reports' / f'research_dev_basket_{datetime.now():%Y%m%d}.md'
+        out.parent.mkdir(exist_ok=True)
+        out.write_text(text, encoding='utf-8')
+        print(text)
+        print(f'已寫入 {out}')
+        return
+    if BASKET_HOLDOUT.exists():
+        print('考卷期已經考過，以下是當時的結果（不重算）：')
+        print(BASKET_HOLDOUT.read_text(encoding='utf-8'))
+        return
+    if not args.variant:
+        sys.exit('考卷期要指定 --variant（研究期通過組中領先最多的一組）')
+    commit = git_commit()
+    if commit.endswith('-dirty'):
+        sys.exit('src/ 有未 commit 的修改；先 commit，考卷結果才能對應到確切的程式版本')
+    v = kv.by_name(args.variant)
+    if input(f'考卷期只能考一次，確定用 {v.name} 嗎？輸入 yes 繼續：').strip() != 'yes':
+        sys.exit('已取消')
+    day_ms = 86_400_000
+    end = (min(b[-1].ts for b in hourly.values()) + 8 * 3_600_000) // day_ms * day_ms - 8 * 3_600_000   # 最後一個完整台北日之前
+    mid = (kv.HOLDOUT_START + end) // 2 // day_ms * day_ms
+    r = kr.evaluate(hourly, v, kv.HOLDOUT_START, end, mid)
+    s, b = r['stats'], r['base']
+    ok, fails = kv.passes_holdout(s.total_return, b.total_return, s.max_drawdown, b.max_drawdown)
+    record = {'variant': v.name, 'commit': commit, 'tested_at': datetime.now().isoformat(timespec='seconds'),
+              'ret': s.total_return, 'base_ret': b.total_return, 'mdd': s.max_drawdown, 'base_mdd': b.max_drawdown,
+              'halves': r['halves'], 'passed': ok, 'fails': fails}
+    BASKET_HOLDOUT.parent.mkdir(parents=True, exist_ok=True)
+    BASKET_HOLDOUT.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
+    print(json.dumps(record, ensure_ascii=False, indent=2))
+
+
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
-    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'rebalance3-1h', 'breakout', 'fear'], default='rebalance')
+    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'rebalance3-1h', 'breakout', 'fear', 'basket'],
+                    default='rebalance')
     ap.add_argument('--stage', choices=['dev', 'holdout'], required=True)
     ap.add_argument('--variant', help='考卷期要考的規則名稱（見研究期報告）')
     ap.add_argument('--db', default=str(ROOT / 'data' / 'bars.db'))
     args = ap.parse_args()
+
+    if args.family == 'basket':
+        basket(args)
+        return
 
     if args.family == 'fear':
         fear(args)
