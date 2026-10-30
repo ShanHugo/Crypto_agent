@@ -11,7 +11,7 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 - **主模擬帳戶**（不是真單）：三資產 `rebal3-eth50-cashusdt75-band5`（ETH 50%、USDT 37.5%、台幣 12.5%，任何一項偏離 5 個百分點全部調回），6,000 台幣；2026-10-26 由原本的兩資產帳戶轉換過來（`--migrate`），狀態在 `state/paper_main.db`。舊的 `state/paper_rebalance.db` 只留作紀錄。
 - 排程：01:35 執行 `paper_rebalance`（不推送，失敗每小時重試到 07:35）、08:30 執行 `paper_report`（推送 Discord）。
 - **影子帳戶**（同一個排程、同樣 6,000 元，只記錄）：原本的兩資產 `rebal-eth50-band10`（ETH 50%、台幣 50%），2026-10-27 凌晨重新建倉；狀態在 `state/shadow_rebal2.db`。
-- 九輪研究共 138 組：只有比例再平衡留下（2026-10-30 營運者同意先停止找新規則）。**ETH 考卷期（2024-01-01 起）已用掉**，結果在 `state/research/holdout.json`。
+- 九輪研究共 138 組：只有比例再平衡留下（營運者仍想找新規則，例如漲幅前幾名的幣；照 `/research-round` 先訂標準）。**ETH 考卷期（2024-01-01 起）已用掉**，結果在 `state/research/holdout.json`。
 - **真單**：**2026-10-27 01:35 起開啟**（第一階段 6,000 元，上限 9,000 元），規則同主帳戶；計畫與 MAX 私有 API 查核在 `docs/DESIGN.md` 6.5。金鑰開查詢＋交易（沒開提領）。由 `.env` 的 `LIVE_TRADING=1`＋`LIVE_CONFIRM=I_UNDERSTAND` 開啟，每天 01:35 執行；預覽用 `scripts/live_trade.py --plan`、紀錄用 `--status`。跑滿 2 週（約 11/10）沒有 🔴 才討論加碼；金鑰絕不經過對話。
 - USDT 開了 MAX「閒置資產收益」（2026-10-28，APR 1%，不鎖倉）：真單權益會略高於模擬帳戶。
 - 每週一 08:30 報告後產生每週事實檢討（第一次 2026-11-02）；主管（`../Cashflow_orchestrator`）每 3 小時檢查一次，跟真錢有關的 🔴 會自動建立暫停檔。
