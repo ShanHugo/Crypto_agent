@@ -5,13 +5,16 @@
     .venv\\Scripts\\python.exe scripts/weekly_review.py --no-send               # 只印出，不推送、不存檔
     .venv\\Scripts\\python.exe scripts/weekly_review.py --date 2026-11-02       # 指定檢討日
 
-結果存在 reports/weekly_YYYYMMDD.md（不進 git），推送 Discord。只讀交易紀錄，不連交易所。
+結果存在 reports/weekly_YYYYMMDD.md（不進 git），推送 Discord。只讀交易紀錄，不連 MAX。
+最後附上幣安資金費率做多的前瞻紀錄（DESIGN 6.7）：抓幣安公開資料、補記到 state/forecast/funding_long.jsonl；--no-send 時不抓、不寫。
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
+import subprocess
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -24,6 +27,10 @@ from dotenv import load_dotenv  # noqa: E402
 
 from crypto_robot import weekly  # noqa: E402
 from crypto_robot.core.timeutil import TAIPEI  # noqa: E402
+from crypto_robot.forecast import funding_long  # noqa: E402
+from crypto_robot.lab import futures  # noqa: E402
+from crypto_robot.lab.direction3h import Series  # noqa: E402
+from crypto_robot.store.bars import BarStore  # noqa: E402
 from crypto_robot.live.executor import LiveStore  # noqa: E402
 from crypto_robot.notify.discord import send  # noqa: E402
 from crypto_robot.paper.multi_account import MultiPaperStore  # noqa: E402
@@ -31,6 +38,7 @@ from crypto_robot.paper.multi_account import MultiPaperStore  # noqa: E402
 LIVE_DB = ROOT / 'state' / 'live' / 'live.db'
 PAPER_DB = ROOT / 'state' / 'paper_main.db'
 REPORTS = ROOT / 'reports'
+FUNDING_LOG = ROOT / 'state' / 'forecast' / 'funding_long.jsonl'
 
 
 def report_path(day: date) -> Path:
@@ -54,8 +62,31 @@ def build(day: date) -> dict:
     return weekly.build(day, runs, orders, hist, trades)
 
 
+def funding_section(update: bool) -> str:
+    """幣安資金費率做多的前瞻紀錄（DESIGN 6.7）；抓公開資料、補記交易。失敗只回一行，不影響週報。"""
+    try:
+        if update:
+            subprocess.run([sys.executable, str(ROOT / 'scripts' / 'fetch_binance.py'), '--futures'],
+                           check=True, capture_output=True, timeout=600)
+        store = BarStore(ROOT / 'data' / 'bars.db')
+        try:
+            eth = Series.of(store.load(futures.MARKET, 60))
+        finally:
+            store.close()
+        rows = json.loads((ROOT / 'data' / 'funding_ethusdt.json').read_text(encoding='utf-8'))
+        fund = futures.Funding([(t, float(r)) for t, r in rows])
+        if update:
+            logged, pool, added = funding_long.update(eth, fund, FUNDING_LOG)
+        else:
+            logged, pool = funding_long.read_log(FUNDING_LOG), funding_long.simulate(eth, fund)[1]
+            added = 0
+        return funding_long.text(funding_long.status(logged, pool), added)
+    except Exception as e:   # noqa: BLE001
+        return f'幣安資金費率前瞻紀錄失敗：{type(e).__name__}: {e}'
+
+
 async def run(day: date, no_send: bool) -> int:
-    text = weekly.text(build(day))
+    text = weekly.text(build(day)) + '\n\n' + funding_section(update=not no_send)
     print(text)
     if no_send:
         return 0

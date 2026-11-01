@@ -77,6 +77,8 @@ flowchart LR
     RPT[paper_report 08:30] --> BK[backup.py<br/>推送後備份]
     RPT -- 每週一 --> WK[weekly_review.py<br/>每週事實檢討・只列數字]
     DB & LDB --> WK
+    WK --> FL[forecast/funding_long.py<br/>幣安資金費率做多・只記錄]
+    FL --> FLOG[(state/forecast/funding_long.jsonl<br/>只新增)]
     WK --> WR[(reports/weekly_*.md)]
     WR --> CD
     DB & SDB & LDB & BAL --> RPT
@@ -91,6 +93,7 @@ flowchart LR
   PRIV --> RO
   RPT --> DC[Discord]
   WK --> DC
+  BNX[Binance 公開 API<br/>合約 K 線・資金費率] --> FL
   BK --> GD[(雲端硬碟<br/>.env 的 BACKUP_DIRS)]
   CD --> CON[Stock_Robot 操作台<br/>「虛擬貨幣」分頁]
   CON -. 重新讀取真實餘額 .-> LC[live_check.py<br/>只查詢] --> BAL
@@ -156,6 +159,7 @@ flowchart TD
 | 真實帳戶（唯讀，同一個排程） | `paper_rebalance.py` 在真單之後執行（快照才是交易後的狀態）；操作台「重新讀取真實餘額」按鈕會呼叫 `live_check.py` | `live/readonly.py`、`exchange/max/private.py` 的 `MaxPrivateClient`（只有查詢方法） | `.env` 的 MAX 金鑰、MAX 私有 API、公開 IP | `state/live/balances.jsonl` | 排程一天讀一次（按鈕可手動再讀）；失敗只記錄，不影響模擬帳戶 | 今天凌晨有讀到、公開 IP 和白名單相同、讀取成功 |
 | 備份（`paper_report` 推送後） | `paper_rebalance.py --report` → `scripts/backup.py` | `src/crypto_robot/backup.py` | `state/`、`reports/`（不含 `.env`） | `BACKUP_DIRS` 的壓縮檔（保留 40 份）、`state/backup/last.json` | 一個目的地失敗不影響其他；SQLite 先做一致快照再壓縮 | 每個目的地成功、3 天內有備份 |
 | 每週事實檢討（`paper_report` 每週一，備份之前） | `paper_rebalance.py --report` → `scripts/weekly_review.py`（也可手動 `--no-send`／`--date`） | `src/crypto_robot/weekly.py`（純函式） | `state/live/live.db`、`state/paper_main.db` | `reports/weekly_YYYYMMDD.md`、Discord | 只列數字、不給建議；失敗不影響備份 | 最近一個週一（2026-11-02 起）有產生 |
+| 幣安資金費率做多前瞻紀錄（每週檢討的最後一段，2026-11-02 起） | `weekly_review.py` 先跑 `fetch_binance.py --futures` 再補記（`--no-send` 不抓不寫） | `src/crypto_robot/forecast/funding_long.py`（規則借用 `lab/futures.py`） | Binance 公開 API（不需要金鑰） | `state/forecast/funding_long.jsonl`、週報最後一段 | 只記錄不下單；失敗只在週報印一行，不影響週報與備份 | 週報最後一段有筆數，沒有「失敗」字樣 |
 | 系統與安全（不是排程） | 操作台開分頁時 | `health.py` 的 `check_system` | git、logs、考卷檔、K 線快取 | — | — | `.env` 沒進 git、專案資料夾沒有金鑰檔、紀錄檔沒有 webhook；考卷期與 K 線快取只顯示資訊 |
 
 ---
@@ -235,8 +239,9 @@ flowchart TD
 | `state/live/balances.jsonl`、`state/live/public_ip.json` | 真實帳戶（唯讀）每日紀錄、白名單 IP（含公開 IP，只在本機） | 能（重新讀）；IP 用 `live_check.py --accept-ip` 重設 |
 | `state/paper_rebalance.db` | 2026-10-26 以前的兩資產主帳戶（已轉到 paper_main.db），只留作紀錄 | 不再寫入 |
 | `state/research/holdout.json` | 考卷期結果（只考一次） | **不能** |
+| `state/forecast/funding_long.jsonl` | 幣安資金費率做多的前瞻紀錄（2026-11-02 起，每週一補記，只新增；DESIGN 6.7） | 能從幣安公開資料重算，但紀錄本身是前瞻證據，不要刪 |
 | `state/paper_rebalance.paused` | 有這個檔案就暫停；主管（`../Cashflow_orchestrator`）遇到真單訂單 unknown／rejected、送單沒跑完會自動建立 | 刪掉＝恢復（由營運者決定） |
-| `data/bars.db` | K 線快取（ethtwd 1h／5 分、usdttwd 1h；只有研究用） | 能（`fetch_bars.py` 重抓） |
+| `data/bars.db`、`data/funding_ethusdt.json` | K 線快取（MAX ethtwd／btctwd／usdttwd、Binance 現貨與 ETHUSDT 合約 1h）、幣安資金費率；研究與前瞻紀錄用 | 能（`fetch_bars.py`、`fetch_binance.py` 重抓） |
 | `logs/*.log` | 排程輸出 | 可刪 |
 | `reports/research_*.md` | 研究報告 | 能（`research.py` 重跑） |
 | `reports/weekly_*.md` | 每週事實檢討 | 能（`weekly_review.py --date` 重算） |
