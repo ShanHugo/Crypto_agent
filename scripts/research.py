@@ -121,7 +121,7 @@ def run_futures(args) -> None:
         print(text)
         print(f'已寫入 {out}')
         return
-    name = futures.pick(res)
+    name = args.variant or futures.pick(res)       # --variant：營運者破例（2026-11-02 fund_streak-hold8，DESIGN 6.3）
     if not name:
         sys.exit('研究期沒有組合通過，不考')
     commit = git_commit()
