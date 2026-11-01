@@ -33,14 +33,74 @@ def git_commit() -> str:
         return 'unknown'
 
 
+def leverage(args) -> None:
+    """第十一輪（槓桿第 3 關）：ETH 槓桿再平衡。沒有考卷期，只有 --stage dev（全部資料、前後兩半都要過）。"""
+    from crypto_robot.lab import leverage_backtest as lb, leverage_variants as lv
+    from crypto_robot.lab.common import day, pct
+    if args.stage != 'dev':
+        sys.exit('第十一輪沒有考卷期（ETH 的考卷已用掉）；只有 --stage dev')
+    store = BarStore(args.db)
+    hourly = {a: store.load(m, periods.PERIOD_MIN) for a, m in lv.MARKETS.items()}
+    store.close()
+    if not all(hourly.values()):
+        sys.exit('快取缺 K 線，先執行 scripts/fetch_bars.py（ethtwd、usdttwd）')
+    day_ms, h8 = 86_400_000, 8 * 3_600_000
+    end = (min(b[-1].ts for b in hourly.values()) + h8) // day_ms * day_ms - h8      # 最後一個完整台北日之前
+    rows = lb.align(hourly['eth'], hourly['usdt'], lv.START, end)
+    halves = lambda r: [lb.segment(r, lv.START, lv.MID), lb.segment(r, lv.MID, end)]
+    base = lb.simulate(rows, 1.0, 1.0, 0.0)
+    bh = halves(base)
+    from crypto_robot.lab.metrics import max_drawdown
+    from crypto_robot.lab.multi_backtest import run_multi
+    from crypto_robot.lab.multi_research import daily_bars
+    from crypto_robot.lab.multi_variants import by_name as round5
+    from crypto_robot.lab.common import COSTS
+    from crypto_robot.lab.metrics import segment_return, stats
+    spot = run_multi(daily_bars(hourly, lv.START, end), lv.START, end, round5('rebal3-eth50-cashusdt75-band5').params, COSTS)
+    spot_h = [segment_return(spot, lv.START, lv.MID), segment_return(spot, lv.MID, end)]
+    lines = [
+        f'# 第十一輪報告（槓桿第 3 關：ETH 槓桿再平衡）（{datetime.now():%Y-%m-%d %H:%M}）', '',
+        f'- 期間 {day(lv.START)} ～ {day(end - 1)}（全部資料，沒有考卷期），前半／後半以 {day(lv.MID)} 切開；逐小時模擬，期初 10,000 元。',
+        f'- ETH 部位＝權益 × L，不足借 USDT；每小時按 USDT 利率 {lv.USDT_HOURLY_RATE:.7f}（年化約 {lv.USDT_HOURLY_RATE * 8760:.0%}）複利；'
+        f'用每小時最低價算維持率，≤ {lv.LIQUIDATION_AD} 強平（殘值扣 {lv.LIQUIDATION_PENALTY:.0%}）。每天台北 00:00 收盤檢查，偏離 ±B 就調回。成本 {lb.COST:.2%}。',
+        f'- 通過標準在看結果前訂定（`src/crypto_robot/lab/leverage_variants.py`），五項全過才算：沒強平；維持率最低 > {lv.MARGIN_CALL_AD}；'
+        f'前後半期都贏 1 倍（一直持有 ETH）；最大回撤不超過 {lv.MAX_DRAWDOWN:.0%}；利率 ×{lv.STRESS_RATE_MULT} 後前後半期仍贏 1 倍。',
+        '- **已知限制**：維持率門檻、強平處理來自第三方文章；利率固定用 2026-11-01 的數字；USDT 目前可借額度 0；ETH 價格已看過多次。', '',
+        f'參考：1 倍（一直持有 ETH）前半 {pct(bh[0])}、後半 {pct(bh[1])}、最大回撤 {pct(max_drawdown([10_000.0] + [v for _, v in base.equity]))}；'
+        f'現在真單的現貨規則前半 {pct(spot_h[0])}、後半 {pct(spot_h[1])}、最大回撤 {pct(stats(spot).max_drawdown)}。', '',
+        '| 規則 | 通過 | 期末（10,000 元起） | 前半 | 後半 | 最大回撤 | 維持率最低 | 強平 | 再平衡次數 | 累計利息 | 利率×2 前半 | 利率×2 後半 | 未通過原因 |',
+        '|---|---|---|---|---|---|---|---|---|---|---|---|---|',
+    ]
+    for v in lv.all_variants():
+        r = lb.simulate(rows, v.lev, v.band, lv.USDT_HOURLY_RATE)
+        s = lb.simulate(rows, v.lev, v.band, lv.USDT_HOURLY_RATE * lv.STRESS_RATE_MULT)
+        h, sh = halves(r), halves(s)
+        mdd = max_drawdown([10_000.0] + [x for _, x in r.equity])
+        ok, fails = lv.passes(r.liquidated_at is not None, r.min_ad, h, bh, mdd, sh)
+        lines.append(
+            f'| {v.name} | {"✅" if ok else "—"} | {r.equity[-1][1]:,.0f} | {pct(h[0])} | {pct(h[1])} | {pct(mdd)} | {r.min_ad:.2f} '
+            f'| {day(r.liquidated_at) if r.liquidated_at else "—"} | {r.rebalances} | {r.interest:,.0f} | {pct(sh[0])} | {pct(sh[1])} | {"；".join(fails)} |')
+    lines += ['', '沒有通過就不做槓桿（DESIGN.md 6.6），不放寬標準。歷史統計，過去有效不代表未來有效。']
+    text = '\n'.join(lines) + '\n'
+    out = ROOT / 'reports' / f'research_leverage_{datetime.now():%Y%m%d}.md'
+    out.parent.mkdir(exist_ok=True)
+    out.write_text(text, encoding='utf-8')
+    print(text)
+    print(f'已寫入 {out}')
+
+
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
-    ap.add_argument('--family', choices=['rebalance', 'rebalance3'], default='rebalance')
+    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'leverage'], default='rebalance')
     ap.add_argument('--stage', choices=['dev', 'holdout'], required=True)
     ap.add_argument('--variant', help='考卷期要考的規則名稱（見研究期報告）')
     ap.add_argument('--db', default=str(ROOT / 'data' / 'bars.db'))
     args = ap.parse_args()
+
+    if args.family == 'leverage':
+        leverage(args)
+        return
 
     if args.family == 'rebalance3':
         if args.stage == 'holdout':
