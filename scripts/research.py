@@ -1,5 +1,6 @@
 """研究工具：比例再平衡（第三輪，ETH＋台幣）與三資產再平衡（第五輪，ETH＋USDT＋台幣，用 --family rebalance3，沒有考卷）、
-3 小時方向（第十二輪，--family direction3h，MAX＋Binance；先跑 scripts/fetch_binance.py）。
+3 小時方向（第十二輪，--family direction3h，MAX＋Binance；先跑 scripts/fetch_binance.py）、
+跌破 24h 低點後做多（第十三輪，--family fakeout）。
 
     .venv\\Scripts\\python.exe scripts/research.py --stage dev
     .venv\\Scripts\\python.exe scripts/research.py --stage holdout       # 已考過：只顯示當時的結果
@@ -19,11 +20,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 
-from crypto_robot.lab import direction3h, multi_research, periods, rebalance_research, rebalance_variants  # noqa: E402
+from crypto_robot.lab import direction3h, fakeout, multi_research, periods, rebalance_research, rebalance_variants  # noqa: E402
 from crypto_robot.store.bars import BarStore  # noqa: E402
 
 HOLDOUT_FILE = ROOT / 'state' / 'research' / 'holdout.json'
 HOLDOUT_D3 = ROOT / 'state' / 'research' / 'holdout_direction3h.json'
+HOLDOUT_FO = ROOT / 'state' / 'research' / 'holdout_fakeout.json'
 
 
 def git_commit() -> str:
@@ -66,10 +68,40 @@ def run_direction3h(args) -> None:
     print(json.dumps(direction3h.run_holdout(series, name, HOLDOUT_D3, commit), ensure_ascii=False, indent=2))
 
 
+def run_fakeout(args) -> None:
+    if args.stage == 'holdout' and HOLDOUT_FO.exists():
+        print('考卷已經考過，以下是當時的結果（不重算）：')
+        print(HOLDOUT_FO.read_text(encoding='utf-8'))
+        return
+    store = BarStore(args.db)
+    eth = {ds: direction3h.Series.of(store.load(mk['eth'], 60)) for ds, mk in direction3h.DATASETS.items()}
+    store.close()
+    if not all(e.c for e in eth.values()):
+        sys.exit('快取缺 K 線，先執行 scripts/fetch_bars.py 與 scripts/fetch_binance.py')
+    res = fakeout.run_dev(eth)
+    if args.stage == 'dev':
+        text = fakeout.dev_report(res, datetime.now().strftime('%Y-%m-%d %H:%M'))
+        out = ROOT / 'reports' / f'research_dev_fakeout_{datetime.now():%Y%m%d}.md'
+        out.parent.mkdir(exist_ok=True)
+        out.write_text(text, encoding='utf-8')
+        print(text)
+        print(f'已寫入 {out}')
+        return
+    name = fakeout.pick(res)
+    if not name:
+        sys.exit('研究期沒有組合通過，不考')
+    commit = git_commit()
+    if commit.endswith('-dirty'):
+        sys.exit('src/ 有未 commit 的修改；先 commit')
+    if input(f'考卷只能考一次，考 {name}？輸入 yes 繼續：').strip() != 'yes':
+        sys.exit('已取消')
+    print(json.dumps(fakeout.run_holdout(eth, name, HOLDOUT_FO, commit), ensure_ascii=False, indent=2))
+
+
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
-    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'direction3h'], default='rebalance')
+    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'direction3h', 'fakeout'], default='rebalance')
     ap.add_argument('--stage', choices=['dev', 'holdout'], required=True)
     ap.add_argument('--variant', help='考卷期要考的規則名稱（見研究期報告）')
     ap.add_argument('--db', default=str(ROOT / 'data' / 'bars.db'))
@@ -77,6 +109,9 @@ def main() -> None:
 
     if args.family == 'direction3h':
         run_direction3h(args)
+        return
+    if args.family == 'fakeout':
+        run_fakeout(args)
         return
 
     if args.family == 'rebalance3':
