@@ -2,7 +2,8 @@
 3 小時方向（第十二輪，--family direction3h，MAX＋Binance；先跑 scripts/fetch_binance.py）、
 跌破 24h 低點後做多（第十三輪，--family fakeout）、
 Binance 永續合約（第十四輪，--family futures；先跑 scripts/fetch_binance.py --futures）、
-Kronos 模型 3 小時預測（第十五輪，--family kronos --stage holdout；先跑 scripts/kronos_predict.py）。
+Kronos 模型 3 小時預測（第十五輪，--family kronos --stage holdout；先跑 scripts/kronos_predict.py）、
+Kronos 預測隔天（第十六輪，--family kronos_daily；先跑 scripts/kronos_predict_daily.py）。
 
     .venv\\Scripts\\python.exe scripts/research.py --stage dev
     .venv\\Scripts\\python.exe scripts/research.py --stage holdout       # 已考過：只顯示當時的結果
@@ -22,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 
-from crypto_robot.lab import direction3h, fakeout, futures, kronos3h, multi_research, periods, rebalance_research, rebalance_variants  # noqa: E402
+from crypto_robot.lab import direction3h, fakeout, futures, kronos3h, kronos_daily, multi_research, periods, rebalance_research, rebalance_variants  # noqa: E402
 from crypto_robot.store.bars import BarStore  # noqa: E402
 
 HOLDOUT_FILE = ROOT / 'state' / 'research' / 'holdout.json'
@@ -30,6 +31,7 @@ HOLDOUT_D3 = ROOT / 'state' / 'research' / 'holdout_direction3h.json'
 HOLDOUT_FO = ROOT / 'state' / 'research' / 'holdout_fakeout.json'
 HOLDOUT_FU = ROOT / 'state' / 'research' / 'holdout_futures.json'
 HOLDOUT_KR = ROOT / 'state' / 'research' / 'holdout_kronos.json'
+HOLDOUT_KD = ROOT / 'state' / 'research' / 'holdout_kronos_daily.json'
 
 
 def git_commit() -> str:
@@ -156,10 +158,57 @@ def run_kronos(args) -> None:
     print(json.dumps(kronos3h.run_exam(eth, preds, HOLDOUT_KR, commit), ensure_ascii=False, indent=2))
 
 
+def run_kronos_daily(args) -> None:
+    if args.stage == 'holdout' and HOLDOUT_KD.exists():
+        print('考卷已經考過，以下是當時的結果（不重算）：')
+        print(HOLDOUT_KD.read_text(encoding='utf-8'))
+        return
+    from crypto_robot.agents.data.resample import to_daily
+    kd = kronos_daily
+    store = BarStore(args.db)
+    hourly = {ds: store.load(m, 60) for ds, m in kd.DATASETS.items()}
+    usdt = to_daily(store.load('usdttwd', 60))
+    store.close()
+    eth = {ds: direction3h.Series.of(b) for ds, b in hourly.items()}
+    days = {ds: to_daily(b) for ds, b in hourly.items()}
+
+    def load(stage):
+        paths = {(ds, i): ROOT / 'data' / 'kronos_daily' / f'{m}_{i}.json' for ds, m in kd.DATASETS.items() for i in kd.INPUTS}
+        if not all(p.exists() for p in paths.values()):
+            sys.exit(f'缺預測，先用 Kronos 的 venv 跑 scripts/kronos_predict_daily.py --stage {stage}')
+        preds = {ds: {i: kd.load_preds(paths[(ds, i)]) for i in kd.INPUTS} for ds in kd.DATASETS}
+        slots = {ds: kd.slots_for(eth[ds], days[ds], stage) for ds in kd.DATASETS}
+        miss = [ds for ds in kd.DATASETS for i in kd.INPUTS if any(s not in preds[ds][i] for s in slots[ds])]
+        if miss:
+            sys.exit(f'{miss} 的預測沒跑完，先跑 scripts/kronos_predict_daily.py --stage {stage}')
+        return preds, slots
+
+    res = kd.run('dev', eth, days, usdt, *load('dev'))
+    if args.stage == 'dev':
+        text = kd.report(res, 'dev', datetime.now().strftime('%Y-%m-%d %H:%M'))
+        out = ROOT / 'reports' / f'research_dev_kronos_daily_{datetime.now():%Y%m%d}.md'
+        out.parent.mkdir(exist_ok=True)
+        out.write_text(text, encoding='utf-8')
+        print(text)
+        print(f'已寫入 {out}')
+        return
+    name = kd.pick(res)
+    if not name:
+        sys.exit('研究期沒有組合通過，不考')
+    commit = git_commit()
+    if commit.endswith('-dirty'):
+        sys.exit('src/ 有未 commit 的修改；先 commit')
+    if input(f'考卷只能考一次，考 {name}？輸入 yes 繼續：').strip() != 'yes':
+        sys.exit('已取消')
+    ex = kd.run('exam', eth, days, usdt, *load('exam'), only=name)
+    print(kd.report(ex, 'exam', datetime.now().strftime('%Y-%m-%d %H:%M')))
+    print(json.dumps(kd.save_exam(ex, name, HOLDOUT_KD, commit), ensure_ascii=False, indent=2, default=str))
+
+
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
-    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'direction3h', 'fakeout', 'futures', 'kronos'], default='rebalance')
+    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'direction3h', 'fakeout', 'futures', 'kronos', 'kronos_daily'], default='rebalance')
     ap.add_argument('--stage', choices=['dev', 'holdout'], required=True)
     ap.add_argument('--variant', help='考卷期要考的規則名稱（見研究期報告）')
     ap.add_argument('--db', default=str(ROOT / 'data' / 'bars.db'))
@@ -176,6 +225,9 @@ def main() -> None:
         return
     if args.family == 'kronos':
         run_kronos(args)
+        return
+    if args.family == 'kronos_daily':
+        run_kronos_daily(args)
         return
 
     if args.family == 'rebalance3':
