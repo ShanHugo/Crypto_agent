@@ -36,7 +36,8 @@ LIVE_IP = ROOT / 'state' / 'live' / 'public_ip.json'
 LIVE_DB = ROOT / 'state' / 'live' / 'live.db'
 BACKUP_STATUS = ROOT / 'state' / 'backup' / 'last.json'
 REPORTS = ROOT / 'reports'
-LOGS = {'paper_rebalance': ROOT / 'logs' / 'paper_rebalance.log', 'paper_report': ROOT / 'logs' / 'paper_report.log'}
+LOGS = {'paper_rebalance': ROOT / 'logs' / 'paper_rebalance.log', 'paper_report': ROOT / 'logs' / 'paper_report.log',
+        'kronos_forecast': ROOT / 'logs' / 'kronos_forecast.log'}
 
 
 def num(v):
@@ -131,6 +132,26 @@ def weekly_latest() -> dict | None:
     return {'date': today.isoformat(), 'preview': True, 'text': weekly.text(wr.build(today))}
 
 
+def forecast_data(now: datetime) -> dict:
+    """前瞻紀錄（DESIGN 6.7，只記錄）：Kronos 每日多空＋營運者判斷、幣安資金費率做多。只讀紀錄檔與本機 K 線，不連網、不補記。"""
+    import weekly_review as wr
+    from crypto_robot.forecast import funding_long as fl, kronos_ls as kl
+    d = ROOT / 'state' / 'forecast'
+    fc, jd = kl.read(d / 'kronos_ls.jsonl'), kl.read(d / 'kronos_judge.jsonl')
+    calls = {j['ts']: j for j in jd}
+    day = lambda ts: datetime.fromtimestamp(ts / 1000, TAIPEI).strftime('%Y-%m-%d %H:%M')   # noqa: E731
+    return {
+        'today': kl.morning_line(fc, jd, int(now.replace(tzinfo=TAIPEI).timestamp() * 1000)),
+        'kronos': [{'at': day(f['ts']), 'dir': f['dir'], 'up': f['up'], 'samples': f['samples'], 'mean': f['mean'],
+                    'entry': f['entry'], 'call': calls[f['ts']]['call'] if f['ts'] in calls else None,
+                    'reason': calls[f['ts']].get('reason', '') if f['ts'] in calls else ''} for f in fc[-14:]],
+        'kronos_text': wr.kronos_section(),
+        'funding': [{'at': day(r['ts']), 'entry': r['entry'], 'exit': r['exit'], 'funding': r['funding'], 'net': r['net']}
+                    for r in fl.read_log(d / 'funding_long.jsonl')[-20:]],
+        'funding_text': wr.funding_section(False),
+    }
+
+
 def snaps(acc: dict | None) -> list[dict]:
     return [{'date': c['date'], 'action': c['action'], 'note': c['note']} for c in acc['curve']] if acc else []
 
@@ -187,6 +208,7 @@ def main() -> None:
         'holdout': None if holdout is None else {k: holdout.get(k) for k in
                                                  ('variant', 'period', 'passed', 'rebalances', 'stats', 'static', 'hodl', 'halves', 'tested_at')},
         'weekly': weekly_latest(),
+        'forecast': forecast_data(now),
         'health': {'agents': agents, 'overall': hc.overall(agents)},
         'logs': {k: [hc.WEBHOOK.sub('<webhook>/', ln) for ln in v[-80:]] for k, v in logs.items()},
     }

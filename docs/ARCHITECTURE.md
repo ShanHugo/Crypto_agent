@@ -17,7 +17,7 @@
 | 每週檢討沒推、數字怪 | `scripts/weekly_review.py --no-send`、`src/crypto_robot/weekly.py`、`reports\weekly_*.md` | 4 |
 | 影子帳戶（兩資產）怪 | `state\shadow_rebal2.db`、`paper/multi_account.py`；設定在 `paper_rebalance.py` 的 `SHADOW` | 4 |
 | 想改規則參數、資金、排程時間、通知內容 | `CLAUDE.md` 的「要改什麼，改哪裡」 | 6 |
-| 操作台分頁壞掉 | `scripts/console_data.py`（資料）；Stock_Robot `src/web/console.py` 的 `/api/crypto`、`templates/console.html` 的 `loadCrypto` | 2、6 |
+| 操作台分頁壞掉 | `scripts/console_data.py`（資料；前瞻紀錄是 `forecast_data()`）；Stock_Robot `src/web/console.py` 的 `/api/crypto`、`templates/console.html` 的 `loadCrypto`（四個子分頁：總覽、前瞻紀錄、健康與排程、紀錄） | 2、6 |
 | MAX API 回應改了 | `exchange/max/public.py`；端點查核在 DESIGN.md 第 1 節 | 2 |
 | 新研究 | `/research-round` skill；研究結果在 DESIGN.md 6.3 | — |
 | 主管自動暫停了虛擬貨幣、Discord 收到診斷報告 | `../Cashflow_orchestrator` 的 `scripts/supervise.py --status`、`reports/diagnosis/`；恢復＝營運者刪暫停檔 | 1、5 |
@@ -84,6 +84,7 @@ flowchart LR
     JD[judge.py<br/>營運者手動記判斷] --> JLOG[(state/forecast/kronos_judge.jsonl<br/>只新增)]
     KLOG & JLOG --> RPT
     KLOG & JLOG --> KS[forecast/kronos_ls.py<br/>三種成績]
+    KLOG & JLOG & FLOG --> CD
     WK --> KS
     WK --> WR[(reports/weekly_*.md)]
     WR --> CD
@@ -102,7 +103,7 @@ flowchart LR
   BNX[Binance 公開 API<br/>合約 K 線・資金費率] --> FL
   BNX --> KF & JD
   BK --> GD[(雲端硬碟<br/>.env 的 BACKUP_DIRS)]
-  CD --> CON[Stock_Robot 操作台<br/>「虛擬貨幣」分頁]
+  CD --> CON[Stock_Robot 操作台「虛擬貨幣」<br/>總覽・前瞻紀錄・健康與排程・紀錄]
   CON -. 重新讀取真實餘額 .-> LC[live_check.py<br/>只查詢] --> BAL
   CON -. 暫停／恢復 .-> PAUSE[state/paper_rebalance.paused]
   PAUSE -.-> PR
@@ -127,7 +128,7 @@ flowchart LR
 | 01:35、02:35…07:35 | `paper_rebalance` | 主模擬 → 影子 → 真單 → 讀真實餘額（下圖）；每一步同一天只做一次，已完成的在重試時略過 | 不推送 |
 | 08:30 | `paper_report` | 讀當天凌晨的結果（模擬、影子、真單、真實餘額、失敗過的重試）；整個時段都沒成功就推 🔴；**每週一**再推一則每週事實檢討；最後備份 | Discord |
 | 00:10、03:10…21:10 | 主管 `\cashflow_orchestrator\`（另一個 repo） | 收集健康檢查；真錢 🔴 建立暫停檔，不是已知狀況的 🔴 叫醒 Claude 唯讀診斷 | 真錢或不是已知狀況的新 🔴 才推；已知 🔴 超過 12 小時沒解決再提醒一次 |
-| 隨時 | — | 操作台「虛擬貨幣」分頁：每分鐘自動刷新畫面；「重新讀取真實餘額」按鈕只查詢 | 不推送 |
+| 隨時 | — | 操作台「虛擬貨幣」分頁（子分頁：總覽、前瞻紀錄、健康與排程、紀錄）：每分鐘自動刷新畫面；「重新讀取真實餘額」按鈕只查詢；前瞻紀錄只讀紀錄檔與本機 K 線，不連網 | 不推送 |
 
 **01:35 一次執行的順序**（`scripts/paper_rebalance.py` 的 `run()`；順序有意義：讀餘額要在真單之後，快照才是交易後的狀態）
 

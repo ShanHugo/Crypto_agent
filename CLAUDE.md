@@ -38,7 +38,7 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 | 再平衡判斷（研究與模擬共用） | `src/crypto_robot/agents/strategy/rebalance.py`；多資產是 `rebalance_multi.py` |
 | 排程時間 | `scripts/register_tasks.ps1` 的 `$tasks`（改完請使用者以系統管理員重跑） |
 | MAX 公開 API | `src/crypto_robot/exchange/max/public.py`（端點已實測，見 DESIGN.md 第 1 節） |
-| 操作台「虛擬貨幣」分頁的資料、Agent 健康檢查 | `scripts/console_data.py`（只讀 JSON）、`src/crypto_robot/health.py`；畫面與 API 在 Stock_Robot 的 `src/web/templates/console.html`、`src/web/console.py`（`/api/crypto`） |
+| 操作台「虛擬貨幣」分頁的資料、Agent 健康檢查 | `scripts/console_data.py`（只讀 JSON；Kronos／資金費率前瞻紀錄在 `forecast_data()`）、`src/crypto_robot/health.py`；畫面與 API 在 Stock_Robot 的 `src/web/templates/console.html`（子分頁：總覽、前瞻紀錄、健康與排程、紀錄；`loadCrypto`、`renderCryptoForecast`）、`src/web/console.py`（`/api/crypto`） |
 | 每週事實檢討（第 2 關的成績單，每週一 08:30 報告後） | `src/crypto_robot/weekly.py`（計算與文字）、`scripts/weekly_review.py`（讀資料、存 `reports/weekly_*.md`、推送）；只列數字，不加建議 |
 | 備份 | `src/crypto_robot/backup.py`、`scripts/backup.py`；08:30 報告推送後自動執行；目的地在 `.env` 的 `BACKUP_DIRS`（不要寫進 git） |
 | 真單執行與安全檢查 | `src/crypto_robot/live/executor.py`（`check_guards`、`plan_orders`、`run_live`）、`scripts/live_trade.py`（開關、設定、`--plan`）；紀錄 `state/live/live.db` |
