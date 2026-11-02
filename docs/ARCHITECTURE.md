@@ -17,7 +17,7 @@
 | 每週檢討沒推、數字怪 | `scripts/weekly_review.py --no-send`、`src/crypto_robot/weekly.py`、`reports\weekly_*.md` | 4 |
 | 影子帳戶（兩資產）怪 | `state\shadow_rebal2.db`、`paper/multi_account.py`；設定在 `paper_rebalance.py` 的 `SHADOW` | 4 |
 | 想改規則參數、資金、排程時間、通知內容 | `CLAUDE.md` 的「要改什麼，改哪裡」 | 6 |
-| 操作台分頁壞掉 | `scripts/console_data.py`（資料；前瞻紀錄是 `forecast_data()`）；Stock_Robot `src/web/console.py` 的 `/api/crypto`、`templates/console.html` 的 `loadCrypto`（四個子分頁：總覽、前瞻紀錄、健康與排程、紀錄） | 2、6 |
+| 操作台分頁壞掉 | `scripts/console_data.py`（資料；前瞻紀錄是 `forecast_data()`）；Cashflow_orchestrator `src/console/app.py` 的 `/api/crypto`、`src/console/templates/console.html` 的 `loadCrypto`（四個子分頁：總覽、前瞻紀錄、健康與排程、紀錄） | 2、6 |
 | MAX API 回應改了 | `exchange/max/public.py`；端點查核在 DESIGN.md 第 1 節 | 2 |
 | 新研究 | `/research-round` skill；研究結果在 DESIGN.md 6.3 | — |
 | 主管自動暫停了虛擬貨幣、Discord 收到診斷報告 | `../Cashflow_orchestrator` 的 `scripts/supervise.py --status`、`reports/diagnosis/`；恢復＝營運者刪暫停檔 | 1、5 |
