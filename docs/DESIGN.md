@@ -507,6 +507,13 @@ IOC 單照理立即結束；查了幾次還是 `wait` 就取消再查。每次�
     - 2024-01 起：570 筆、每筆 +0.030%（研究期是 +0.165%）、t +1.62；這份勉強達到考卷標準，但前半 +0.12%、後半 -0.06%，優勢在變小。
     - 2019-11～2020-12：230 筆、每筆 **-0.33%**、t -1.04，輸給隨機第 90 百分位。
     - 結論：研究期的 +0.165% 主要是 2021–2023 的行情，換一段時間就沒了或反過來。
+- **第十五輪（Kronos 模型預測 3 小時，2026-11-02 看結果前訂定，`lab/kronos3h.py`、`scripts/kronos_predict.py`）**：營運者提議導入 Kronos（github.com/shiyu-coder/Kronos，MIT，K 線預測模型）。只研究，交易路徑不碰它。
+  - 論文（arXiv 2508.02739）寫訓練資料到 2024-06、作者測試期 2024-07 起（含 Binance 現貨）。所以只用 **2025-09-01～2026-10-31** 考一次；不調參數、沒有研究期，沒過就結束，不換模型大小或參數重考。
+  - 模型 `NeoQuasar/Kronos-small`＋`Kronos-Tokenizer-base`，Kronos 原始碼 commit 67b630e；裝在另一個 venv（`../_vendor/kronos_venv`，含 torch），預測存 `data/kronos/<market>.json`。
+  - 時點同第十二輪（台北 00、03…21 點）。輸入時點前 512 根 1h K 線（OHLCV、UTC 時間），預測下 3 根；取樣 T 1.0、top_p 0.9、每次 10 個樣本平均；每 32 個時點一批，seed＝該批第一個時點的小時數。
+  - 預測收盤比現在高 0.32%（MAX 來回手續費）以上算看多，低 0.32% 以上算看空，其他不判斷。實際報酬同第十二輪（時點前一根收盤 → 3 小時後收盤）。
+  - MAX（ethtwd）與 Binance（ETHUSDT）各考一次，都要過：判斷 ≥ 100 次、命中率 ≥ 53%、t ≥ 2、只做多扣成本後平均 > 0、贏 1000 次隨機做多的第 95 百分位（`state/research/holdout_kronos.json`）。
+  - 執行：先 `..\_vendor\kronos_venv\Scripts\python.exe scripts/kronos_predict.py`，再 `scripts/research.py --family kronos --stage holdout`。
   - 第六～九輪的程式 2026-10-30 已刪除（上面的「執行」指令已不能用），要找回就看 `git show b112076 --stat`；報告留在本機 `reports/`。山寨幣日 K 留在 `data/bars.db`，考卷期 2024-07 起（山寨幣、BTC）都沒用過。
 
 ### 6.4.1 比例再平衡模擬帳戶（2026-10-26 開始）

@@ -1,7 +1,8 @@
 """研究工具：比例再平衡（第三輪，ETH＋台幣）與三資產再平衡（第五輪，ETH＋USDT＋台幣，用 --family rebalance3，沒有考卷）、
 3 小時方向（第十二輪，--family direction3h，MAX＋Binance；先跑 scripts/fetch_binance.py）、
 跌破 24h 低點後做多（第十三輪，--family fakeout）、
-Binance 永續合約（第十四輪，--family futures；先跑 scripts/fetch_binance.py --futures）。
+Binance 永續合約（第十四輪，--family futures；先跑 scripts/fetch_binance.py --futures）、
+Kronos 模型 3 小時預測（第十五輪，--family kronos --stage holdout；先跑 scripts/kronos_predict.py）。
 
     .venv\\Scripts\\python.exe scripts/research.py --stage dev
     .venv\\Scripts\\python.exe scripts/research.py --stage holdout       # 已考過：只顯示當時的結果
@@ -21,13 +22,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 
-from crypto_robot.lab import direction3h, fakeout, futures, multi_research, periods, rebalance_research, rebalance_variants  # noqa: E402
+from crypto_robot.lab import direction3h, fakeout, futures, kronos3h, multi_research, periods, rebalance_research, rebalance_variants  # noqa: E402
 from crypto_robot.store.bars import BarStore  # noqa: E402
 
 HOLDOUT_FILE = ROOT / 'state' / 'research' / 'holdout.json'
 HOLDOUT_D3 = ROOT / 'state' / 'research' / 'holdout_direction3h.json'
 HOLDOUT_FO = ROOT / 'state' / 'research' / 'holdout_fakeout.json'
 HOLDOUT_FU = ROOT / 'state' / 'research' / 'holdout_futures.json'
+HOLDOUT_KR = ROOT / 'state' / 'research' / 'holdout_kronos.json'
 
 
 def git_commit() -> str:
@@ -132,10 +134,32 @@ def run_futures(args) -> None:
     print(json.dumps(futures.run_holdout(eth, fund, name, HOLDOUT_FU, commit), ensure_ascii=False, indent=2))
 
 
+def run_kronos(args) -> None:
+    if HOLDOUT_KR.exists():
+        print('考卷已經考過，以下是當時的結果（不重算）：')
+        print(HOLDOUT_KR.read_text(encoding='utf-8'))
+        return
+    if args.stage == 'dev':
+        sys.exit('第十五輪不調參數、沒有研究期，直接用 --stage holdout 考一次')
+    store = BarStore(args.db)
+    eth = {ds: direction3h.Series.of(store.load(m, 60)) for ds, m in kronos3h.DATASETS.items()}
+    store.close()
+    paths = {ds: ROOT / 'data' / 'kronos' / f'{m}.json' for ds, m in kronos3h.DATASETS.items()}
+    if not all(p.exists() for p in paths.values()):
+        sys.exit('缺預測，先用 Kronos 的 venv 跑 scripts/kronos_predict.py')
+    commit = git_commit()
+    if commit.endswith('-dirty'):
+        sys.exit('src/ 有未 commit 的修改；先 commit')
+    if input('考卷只能考一次，考 Kronos？輸入 yes 繼續：').strip() != 'yes':
+        sys.exit('已取消')
+    preds = {ds: kronos3h.load_preds(p) for ds, p in paths.items()}
+    print(json.dumps(kronos3h.run_exam(eth, preds, HOLDOUT_KR, commit), ensure_ascii=False, indent=2))
+
+
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
-    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'direction3h', 'fakeout', 'futures'], default='rebalance')
+    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'direction3h', 'fakeout', 'futures', 'kronos'], default='rebalance')
     ap.add_argument('--stage', choices=['dev', 'holdout'], required=True)
     ap.add_argument('--variant', help='考卷期要考的規則名稱（見研究期報告）')
     ap.add_argument('--db', default=str(ROOT / 'data' / 'bars.db'))
@@ -149,6 +173,9 @@ def main() -> None:
         return
     if args.family == 'futures':
         run_futures(args)
+        return
+    if args.family == 'kronos':
+        run_kronos(args)
         return
 
     if args.family == 'rebalance3':

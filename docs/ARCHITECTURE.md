@@ -107,7 +107,7 @@ flowchart LR
 - 模擬帳戶只用公開 API：用當下盤口逐檔吃單、扣 taker 0.16%。
 - 真單用 `.env` 的 MAX 金鑰（查詢＋交易，**沒開提領**）。只有 `live/executor.py` 用會下單的 `MaxTradingClient`；其他讀取一律用沒有交易方法的 `MaxPrivateClient`。
 - 操作台用 Crypto_Robot 自己的 Python 執行 `console_data.py`（只讀）與 `live_check.py`（只查詢），兩個專案不互相 import。
-- 研究工具（`lab/`、`scripts/research.py`、`scripts/fetch_bars.py`）是手動用，不在排程裡。
+- 研究工具（`lab/`、`scripts/research.py`、`scripts/fetch_bars.py`）是手動用，不在排程裡。`scripts/kronos_predict.py` 用另一個 venv（`../_vendor/kronos_venv`，含 torch），真單的 `.venv` 不裝 torch。
 
 ---
 
