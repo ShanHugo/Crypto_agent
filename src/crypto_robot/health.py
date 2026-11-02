@@ -148,6 +148,24 @@ def check_weekly(now: datetime, done: set[date]) -> list[Check]:
     return [Check('每週檢討', 'ok', f'{monday} 已推送（reports/weekly_{monday:%Y%m%d}.md）')]
 
 
+KRONOS_SINCE = date(2026, 11, 3)     # 第一筆 Kronos 預測（02:00）
+
+
+def check_kronos(now: datetime, days: set[date]) -> list[Check]:
+    """02:00 的 Kronos 多空預測（只記錄）；days：kronos_ls.jsonl 裡有預測的台北日期。08:00 前還可能補跑，所以過了 08:00 才算漏。
+    只是前瞻紀錄、不影響交易：漏一兩天 🟡，連續 3 天以上沒有才 🔴（排程大概壞了）。"""
+    day = expected_date(now, WINDOW_END)
+    if day < KRONOS_SINCE:
+        return [Check('Kronos 預測', 'ok', f'第一筆在 {KRONOS_SINCE} 02:00')]
+    if day in days:
+        return [Check('Kronos 預測', 'ok', f'{day} 02:00 已記錄')]
+    miss = 0
+    while day - timedelta(days=miss) >= KRONOS_SINCE and day - timedelta(days=miss) not in days:
+        miss += 1
+    return [Check('Kronos 預測', 'red' if miss >= 3 else 'yellow', f'{day} 02:00 沒有預測（連續 {miss} 天沒有）',
+                  '看 logs/kronos_forecast.log 與排程 kronos_forecast；只記錄，不影響交易')]
+
+
 def check_live(now: datetime, records: list[dict], keys_set: bool, ref_ip_set: bool) -> list[Check]:
     """真實帳戶（唯讀，真單第一階段）：凌晨有讀到餘額、金鑰可用、公開 IP 沒變。records：state/live/balances.jsonl，由舊到新。"""
     if not keys_set:

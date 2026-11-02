@@ -152,6 +152,12 @@ def forecast_data(now: datetime) -> dict:
     }
 
 
+def kronos_days() -> set:
+    """kronos_ls.jsonl 裡有預測的台北日期（給健康檢查）。"""
+    from crypto_robot.forecast import kronos_ls as kl
+    return {datetime.fromtimestamp(f['ts'] / 1000, TAIPEI).date() for f in kl.read(ROOT / 'state' / 'forecast' / 'kronos_ls.jsonl')}
+
+
 def snaps(acc: dict | None) -> list[dict]:
     return [{'date': c['date'], 'action': c['action'], 'note': c['note']} for c in acc['curve']] if acc else []
 
@@ -195,6 +201,7 @@ def main() -> None:
         shadow_agent,
         hc.agent('live_trade', '真單', hc.check_live_trade(now, live_on, run_want, orders_want)),
         hc.agent('live', '真實帳戶（唯讀）', hc.check_live(now, live_records, keys_set, ref is not None)),
+        hc.agent('kronos_forecast', 'Kronos 預測（02:00，只記錄）', hc.check_kronos(now, kronos_days())),
     ]
     out = {
         'generated_at': now.isoformat(timespec='seconds'),

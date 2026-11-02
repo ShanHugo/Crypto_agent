@@ -85,6 +85,7 @@ flowchart LR
     KLOG & JLOG --> RPT
     KLOG & JLOG --> KS[forecast/kronos_ls.py<br/>三種成績]
     KLOG & JLOG & FLOG --> CD
+    KLOG --> HC
     WK --> KS
     WK --> WR[(reports/weekly_*.md)]
     WR --> CD
@@ -169,7 +170,7 @@ flowchart TD
 | 備份（`paper_report` 推送後） | `paper_rebalance.py --report` → `scripts/backup.py` | `src/crypto_robot/backup.py` | `state/`、`reports/`（不含 `.env`） | `BACKUP_DIRS` 的壓縮檔（保留 40 份）、`state/backup/last.json` | 一個目的地失敗不影響其他；SQLite 先做一致快照再壓縮 | 每個目的地成功、3 天內有備份 |
 | 每週事實檢討（`paper_report` 每週一，備份之前） | `paper_rebalance.py --report` → `scripts/weekly_review.py`（也可手動 `--no-send`／`--date`） | `src/crypto_robot/weekly.py`（純函式） | `state/live/live.db`、`state/paper_main.db` | `reports/weekly_YYYYMMDD.md`、Discord | 只列數字、不給建議；失敗不影響備份 | 最近一個週一（2026-11-02 起）有產生 |
 | 幣安資金費率做多前瞻紀錄（每週檢討的最後一段，2026-11-02 起） | `weekly_review.py` 先跑 `fetch_binance.py --futures` 再補記（`--no-send` 不抓不寫） | `src/crypto_robot/forecast/funding_long.py`（規則借用 `lab/futures.py`） | Binance 公開 API（不需要金鑰） | `state/forecast/funding_long.jsonl`、週報最後一段 | 只記錄不下單；失敗只在週報印一行，不影響週報與備份 | 週報最後一段有筆數，沒有「失敗」字樣 |
-| Kronos＋人工判斷多空前瞻紀錄（2026-11-03 起） | `run_scheduled.cmd kronos_forecast` → `kronos_forecast.py`；營運者手動 `judge.py long\|short\|flat` | `forecast/kronos_ls.py`（純函式）、`kronos_model.py`（`../_vendor/kronos_venv`，Kronos commit 67b630e） | Binance 公開 API、`data/bars.db` | `state/forecast/kronos_ls.jsonl`、`kronos_judge.jsonl`、`logs\kronos_forecast.log`；08:30 報告一行、週報一段 | 只記錄不下單；已預測過、08:00 後就略過；判斷一天一次、不能改 | 08:30 報告沒有「今天 02:00 沒有預測」；健康檢查還沒加 |
+| Kronos＋人工判斷多空前瞻紀錄（2026-11-03 起） | `run_scheduled.cmd kronos_forecast` → `kronos_forecast.py`；營運者手動 `judge.py long\|short\|flat` | `forecast/kronos_ls.py`（純函式）、`kronos_model.py`（`../_vendor/kronos_venv`，Kronos commit 67b630e） | Binance 公開 API、`data/bars.db` | `state/forecast/kronos_ls.jsonl`、`kronos_judge.jsonl`、`logs\kronos_forecast.log`；08:30 報告一行、週報一段 | 只記錄不下單；已預測過、08:00 後就略過；判斷一天一次、不能改 | 08:30 報告沒有「今天 02:00 沒有預測」；`health.py` 的 `check_kronos`：08:00 後看今天有沒有預測（漏 1～2 天 🟡、連續 3 天以上 🔴；主管當已知狀況，不會自動暫停） |
 | 系統與安全（不是排程） | 操作台開分頁時 | `health.py` 的 `check_system` | git、logs、考卷檔、K 線快取 | — | — | `.env` 沒進 git、專案資料夾沒有金鑰檔、紀錄檔沒有 webhook；考卷期與 K 線快取只顯示資訊 |
 
 ---

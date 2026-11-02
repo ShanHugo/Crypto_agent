@@ -102,3 +102,13 @@ def test_agent_and_overall_levels():
     a = hc.agent('k', 'L', [hc.Check('x', 'ok', ''), hc.Check('y', 'yellow', '')])
     b = hc.agent('k2', 'L2', [hc.Check('z', 'red', '')])
     assert a['level'] == 'yellow' and hc.overall([a, b]) == 'red' and hc.overall([]) == 'ok'
+
+
+def test_check_kronos():
+    d = date
+    before = hc.check_kronos(datetime(2026, 11, 3, 7, 0), set())          # 08:00 前看前一天，還沒開始
+    assert levels(before) == {'Kronos 預測': 'ok'}
+    assert levels(hc.check_kronos(datetime(2026, 11, 3, 9, 0), {d(2026, 11, 3)})) == {'Kronos 預測': 'ok'}
+    assert levels(hc.check_kronos(datetime(2026, 11, 3, 9, 0), set())) == {'Kronos 預測': 'yellow'}
+    assert levels(hc.check_kronos(datetime(2026, 11, 5, 9, 0), {d(2026, 11, 3)})) == {'Kronos 預測': 'yellow'}
+    assert levels(hc.check_kronos(datetime(2026, 11, 6, 9, 0), {d(2026, 11, 3)})) == {'Kronos 預測': 'red'}
