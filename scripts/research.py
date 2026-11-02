@@ -192,9 +192,9 @@ def run_kronos_daily(args) -> None:
         print(text)
         print(f'已寫入 {out}')
         return
-    name = kd.pick(res)
-    if not name:
-        sys.exit('研究期沒有組合通過，不考')
+    name = args.variant or kd.pick(res)       # --variant：營運者破例（2026-11-02 d1_agree，DESIGN 6.3）
+    if name not in kd.VARIANTS:
+        sys.exit('研究期沒有組合通過，不考' if not name else f'沒有 {name} 這一組')
     commit = git_commit()
     if commit.endswith('-dirty'):
         sys.exit('src/ 有未 commit 的修改；先 commit')
