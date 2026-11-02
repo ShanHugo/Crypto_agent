@@ -9,12 +9,12 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 ## 現況（2026-10-28）
 
 - **主模擬帳戶**（不是真單）：三資產 `rebal3-eth50-cashusdt75-band5`（ETH 50%、USDT 37.5%、台幣 12.5%，任何一項偏離 5 個百分點全部調回），6,000 台幣；2026-10-26 由原本的兩資產帳戶轉換過來（`--migrate`），狀態在 `state/paper_main.db`。舊的 `state/paper_rebalance.db` 只留作紀錄。
-- 排程：01:35 執行 `paper_rebalance`（不推送，失敗每小時重試到 07:35）、08:30 執行 `paper_report`（推送 Discord）。
+- 排程：01:35 執行 `paper_rebalance`（不推送，失敗每小時重試到 07:35）、02:00 執行 `kronos_forecast`（Kronos 多空預測，只記錄；模型在 `../_vendor/kronos_venv`，真單的 `.venv` 不裝 torch）、08:30 執行 `paper_report`（推送 Discord）。營運者每天用 `scripts/judge.py long|short|flat` 記判斷。
 - **影子帳戶**（同一個排程、同樣 6,000 元，只記錄）：原本的兩資產 `rebal-eth50-band10`（ETH 50%、台幣 50%），2026-10-27 凌晨重新建倉；狀態在 `state/shadow_rebal2.db`。
 - 十六輪研究共 201 組（第十一輪是槓桿、第十二～十四輪是短線方向、跌破後做多、Binance 合約資金費率，第十五、十六輪是 Kronos 模型預測 3 小時／隔天，都沒過；第十四輪 `fund_streak` 只差 t、第十六輪 `d1_agree` 破例考卷也都沒過）：只有現貨比例再平衡留下（營運者仍可能找新規則；照 `/research-round` 先訂標準）。**ETH 考卷期（2024-01-01 起）已用掉**，結果在 `state/research/holdout.json`。
 - **真單**：**2026-10-27 01:35 起開啟**（第一階段 6,000 元，上限 9,000 元），規則同主帳戶；計畫與 MAX 私有 API 查核在 `docs/DESIGN.md` 6.5。金鑰開查詢＋交易（沒開提領）。由 `.env` 的 `LIVE_TRADING=1`＋`LIVE_CONFIRM=I_UNDERSTAND` 開啟，每天 01:35 執行；預覽用 `scripts/live_trade.py --plan`、紀錄用 `--status`。跑滿 2 週（約 11/10）沒有 🔴 才討論加碼；金鑰絕不經過對話。
 - USDT 開了 MAX「閒置資產收益」（2026-10-28，APR 1%，不鎖倉）：真單權益會略高於模擬帳戶。
-- 每週一 08:30 報告後產生每週事實檢討（第一次 2026-11-02；最後一段是幣安資金費率做多的前瞻紀錄，只記錄，見 DESIGN 6.7）；主管（`../Cashflow_orchestrator`）每 3 小時檢查一次，跟真錢有關的 🔴 會自動建立暫停檔。
+- 每週一 08:30 報告後產生每週事實檢討（第一次 2026-11-02；後兩段是幣安資金費率做多、Kronos＋人工判斷多空的前瞻紀錄，只記錄，見 DESIGN 6.7）；主管（`../Cashflow_orchestrator`）每 3 小時檢查一次，跟真錢有關的 🔴 會自動建立暫停檔。
 - **槓桿（借滿益）**：2026-10-27 訂下五個關卡（`docs/DESIGN.md` 6.6，開局 10,000 元、最多賠 10,000 元、目標 100,000 元）。2026-11-01 提前做的第 3 關回測沒通過（2 倍被強平、1.5 倍回撤 -86% 以上）→ 不做 MAX 槓桿。**2026-11-02 營運者決定以後槓桿走 Binance 永續合約（可多空），研究以 Binance 為主**（DESIGN 6.6；系統沒有 Binance 金鑰）。
 
 ## 不可違反的規則

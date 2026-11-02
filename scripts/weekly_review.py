@@ -7,6 +7,7 @@
 
 結果存在 reports/weekly_YYYYMMDD.md（不進 git），推送 Discord。只讀交易紀錄，不連 MAX。
 最後附上幣安資金費率做多的前瞻紀錄（DESIGN 6.7）：抓幣安公開資料、補記到 state/forecast/funding_long.jsonl；--no-send 時不抓、不寫。
+再附 Kronos＋人工判斷多空的成績（只讀 state/forecast/kronos_*.jsonl，DESIGN 6.7）。
 """
 from __future__ import annotations
 
@@ -27,7 +28,7 @@ from dotenv import load_dotenv  # noqa: E402
 
 from crypto_robot import weekly  # noqa: E402
 from crypto_robot.core.timeutil import TAIPEI  # noqa: E402
-from crypto_robot.forecast import funding_long  # noqa: E402
+from crypto_robot.forecast import funding_long, kronos_ls  # noqa: E402
 from crypto_robot.lab import futures  # noqa: E402
 from crypto_robot.lab.hourly import Series  # noqa: E402
 from crypto_robot.store.bars import BarStore  # noqa: E402
@@ -85,8 +86,24 @@ def funding_section(update: bool) -> str:
         return f'幣安資金費率前瞻紀錄失敗：{type(e).__name__}: {e}'
 
 
+def kronos_section() -> str:
+    """Kronos＋人工判斷多空前瞻紀錄（DESIGN 6.7）；資料由 funding_section 先抓好。失敗只回一行。"""
+    try:
+        store = BarStore(ROOT / 'data' / 'bars.db')
+        try:
+            eth = Series.of(store.load(futures.MARKET, 60))
+        finally:
+            store.close()
+        rows = json.loads((ROOT / 'data' / 'funding_ethusdt.json').read_text(encoding='utf-8'))
+        fund = futures.Funding([(t, float(r)) for t, r in rows])
+        d = ROOT / 'state' / 'forecast'
+        return kronos_ls.weekly_text(kronos_ls.read(d / 'kronos_ls.jsonl'), kronos_ls.read(d / 'kronos_judge.jsonl'), eth, fund)
+    except Exception as e:   # noqa: BLE001
+        return f'Kronos＋人工判斷前瞻紀錄失敗：{type(e).__name__}: {e}'
+
+
 async def run(day: date, no_send: bool) -> int:
-    text = weekly.text(build(day)) + '\n\n' + funding_section(update=not no_send)
+    text = weekly.text(build(day)) + '\n\n' + funding_section(update=not no_send) + '\n\n' + kronos_section()
     print(text)
     if no_send:
         return 0

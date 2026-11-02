@@ -322,9 +322,20 @@ async def live_read(prices: dict, server_ms: int) -> None:
     print(readonly.summary(rec))
 
 
+def kronos_line() -> str:
+    """Kronos＋人工判斷前瞻紀錄（DESIGN.md 6.7）今天 02:00 的預測；只讀紀錄，失敗只回一行。"""
+    try:
+        from crypto_robot.forecast import kronos_ls as kl
+        d = ROOT / 'state' / 'forecast'
+        return kl.morning_line(kl.read(d / 'kronos_ls.jsonl'), kl.read(d / 'kronos_judge.jsonl'),
+                               int(datetime.now(TAIPEI).timestamp() * 1000))
+    except Exception as e:   # noqa: BLE001
+        return f'🟡 Kronos 紀錄讀取失敗：{type(e).__name__}'
+
+
 async def report(no_send: bool) -> int:
     load_dotenv(ROOT / '.env')
-    text = morning_text()
+    text = morning_text() + '\n' + kronos_line()
     print(text)
     if not no_send:
         async with aiohttp.ClientSession() as session:
