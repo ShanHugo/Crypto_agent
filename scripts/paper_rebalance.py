@@ -323,7 +323,7 @@ async def live_read(prices: dict, server_ms: int) -> None:
 
 
 def kronos_line() -> str:
-    """Kronos＋人工判斷前瞻紀錄（DESIGN.md 6.7）今天 02:00 的預測；只讀紀錄，失敗只回一行。"""
+    """Kronos＋人工判斷前瞻紀錄（DESIGN.md 6.7）今天 00:00 的預測；只讀紀錄，失敗只回一行。"""
     try:
         from crypto_robot.forecast import kronos_ls as kl
         d = ROOT / 'state' / 'forecast'

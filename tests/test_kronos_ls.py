@@ -14,9 +14,9 @@ def eth(prices, start=TS - kl.LOOKBACK * H):
 
 
 def test_forecast_ts_is_taipei_2am():
-    assert kl.forecast_ts(TS + 5 * H) == TS                  # 台北 07:00 → 當天 02:00
-    assert kl.forecast_ts(TS - 3 * H) == TS - DAY_MS          # 台北 23:00 → 前一天 02:00（還沒換日）
-    assert (TS + 8 * H) % DAY_MS == 2 * H
+    assert kl.forecast_ts(TS + 5 * H) == TS                  # 台北 05:00 → 當天 00:00
+    assert kl.forecast_ts(TS - 3 * H) == TS - DAY_MS          # 台北 21:00 → 前一天 00:00（還沒換日）
+    assert (TS + 8 * H) % DAY_MS == 0
 
 
 def test_model_input_needs_512_closed_bars():
@@ -40,11 +40,11 @@ def test_open_forecast_once_per_day():
     j = kl.judgment_row(f, 'short', 101.0, TS + 7 * H, '')
     assert j['call'] == -1 and j['kronos'] == 1
     assert '已經記過' in kl.open_forecast([f], [j], TS + 8 * H)[1]
-    assert kl.open_forecast([f], [], TS + DAY_MS)[0] is None   # 隔天 02:00 之後不能補記
+    assert kl.open_forecast([f], [], TS + DAY_MS)[0] is None   # 隔天 00:00 之後不能補記
 
 
 def test_settle_three_tracks_with_funding():
-    e = eth([100.0] * kl.LOOKBACK + [110.0] * 24)             # 02:00 進場 100，隔天 02:00 收 110
+    e = eth([100.0] * kl.LOOKBACK + [110.0] * 24)             # 00:00 進場 100，隔天 00:00 收 110
     fund = Funding([(TS + 8 * H, 0.001)])
     f = kl.forecast_row(TS, 100.0, [0.01] * 30)               # Kronos 看多
     j = kl.judgment_row(f, 'long', 105.0, TS + 7 * H, '')     # 營運者 09:00 用 105 做多

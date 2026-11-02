@@ -79,7 +79,7 @@ flowchart LR
     DB & LDB --> WK
     WK --> FL[forecast/funding_long.py<br/>幣安資金費率做多・只記錄]
     FL --> FLOG[(state/forecast/funding_long.jsonl<br/>只新增)]
-    KF[kronos_forecast 02:00<br/>Kronos 多空預測・只記錄] --> KM[kronos_model.py<br/>另一個 venv（torch）]
+    KF[kronos_forecast 00:00<br/>Kronos 多空預測・只記錄] --> KM[kronos_model.py<br/>另一個 venv（torch）]
     KF --> KLOG[(state/forecast/kronos_ls.jsonl<br/>只新增)]
     JD[judge.py<br/>營運者手動記判斷] --> JLOG[(state/forecast/kronos_judge.jsonl<br/>只新增)]
     KLOG & JLOG --> RPT
@@ -124,8 +124,8 @@ flowchart LR
 
 | 台北時間 | 排程（`\crypto_robot\`） | 做什麼 | 推送 |
 |---|---|---|---|
+| 00:00 | `kronos_forecast` | 抓 Binance 合約 1h K 線與資金費率 → Kronos 預測接下來 24 小時（只記錄不下單，DESIGN 6.7）；08:00 後補跑就略過 | 不推送（08:30 報告多一行） |
 | 01:30～08:00 | — | 使用者允許自動交易的時段（2026-10-26 由 07:30 延長） | — |
-| 02:00 | `kronos_forecast` | 抓 Binance 合約 1h K 線與資金費率 → Kronos 預測接下來 24 小時（只記錄不下單，DESIGN 6.7）；08:00 後補跑就略過 | 不推送（08:30 報告多一行） |
 | 01:35、02:35…07:35 | `paper_rebalance` | 主模擬 → 影子 → 真單 → 讀真實餘額（下圖）；每一步同一天只做一次，已完成的在重試時略過 | 不推送 |
 | 08:30 | `paper_report` | 讀當天凌晨的結果（模擬、影子、真單、真實餘額、失敗過的重試）；整個時段都沒成功就推 🔴；**每週一**再推一則每週事實檢討；最後備份 | Discord |
 | 00:10、03:10…21:10 | 主管 `\cashflow_orchestrator\`（另一個 repo） | 收集健康檢查；真錢 🔴 建立暫停檔，不是已知狀況的 🔴 叫醒 Claude 唯讀診斷 | 真錢或不是已知狀況的新 🔴 才推；已知 🔴 超過 12 小時沒解決再提醒一次 |
@@ -170,7 +170,7 @@ flowchart TD
 | 備份（`paper_report` 推送後） | `paper_rebalance.py --report` → `scripts/backup.py` | `src/crypto_robot/backup.py` | `state/`、`reports/`（不含 `.env`） | `BACKUP_DIRS` 的壓縮檔（保留 40 份）、`state/backup/last.json` | 一個目的地失敗不影響其他；SQLite 先做一致快照再壓縮 | 每個目的地成功、3 天內有備份 |
 | 每週事實檢討（`paper_report` 每週一，備份之前） | `paper_rebalance.py --report` → `scripts/weekly_review.py`（也可手動 `--no-send`／`--date`） | `src/crypto_robot/weekly.py`（純函式） | `state/live/live.db`、`state/paper_main.db` | `reports/weekly_YYYYMMDD.md`、Discord | 只列數字、不給建議；失敗不影響備份 | 最近一個週一（2026-11-02 起）有產生 |
 | 幣安資金費率做多前瞻紀錄（每週檢討的最後一段，2026-11-02 起） | `weekly_review.py` 先跑 `fetch_binance.py --futures` 再補記（`--no-send` 不抓不寫） | `src/crypto_robot/forecast/funding_long.py`（規則借用 `lab/futures.py`） | Binance 公開 API（不需要金鑰） | `state/forecast/funding_long.jsonl`、週報最後一段 | 只記錄不下單；失敗只在週報印一行，不影響週報與備份 | 週報最後一段有筆數，沒有「失敗」字樣 |
-| Kronos＋人工判斷多空前瞻紀錄（2026-11-03 起） | `run_scheduled.cmd kronos_forecast` → `kronos_forecast.py`；營運者手動 `judge.py long\|short\|flat` | `forecast/kronos_ls.py`（純函式）、`kronos_model.py`（`../_vendor/kronos_venv`，Kronos commit 67b630e） | Binance 公開 API、`data/bars.db` | `state/forecast/kronos_ls.jsonl`、`kronos_judge.jsonl`、`logs\kronos_forecast.log`；08:30 報告一行、週報一段 | 只記錄不下單；已預測過、08:00 後就略過；判斷一天一次、不能改 | 08:30 報告沒有「今天 02:00 沒有預測」；`health.py` 的 `check_kronos`：08:00 後看今天有沒有預測（漏 1～2 天 🟡、連續 3 天以上 🔴；主管當已知狀況，不會自動暫停） |
+| Kronos＋人工判斷多空前瞻紀錄（2026-11-03 起） | `run_scheduled.cmd kronos_forecast` → `kronos_forecast.py`；營運者手動 `judge.py long\|short\|flat` | `forecast/kronos_ls.py`（純函式）、`kronos_model.py`（`../_vendor/kronos_venv`，Kronos commit 67b630e） | Binance 公開 API、`data/bars.db` | `state/forecast/kronos_ls.jsonl`、`kronos_judge.jsonl`、`logs\kronos_forecast.log`；08:30 報告一行、週報一段 | 只記錄不下單；已預測過、08:00 後就略過；判斷一天一次、不能改 | 08:30 報告沒有「今天 00:00 沒有預測」；`health.py` 的 `check_kronos`：08:00 後看今天有沒有預測（漏 1～2 天 🟡、連續 3 天以上 🔴；主管當已知狀況，不會自動暫停） |
 | 系統與安全（不是排程） | 操作台開分頁時 | `health.py` 的 `check_system` | git、logs、考卷檔、K 線快取 | — | — | `.env` 沒進 git、專案資料夾沒有金鑰檔、紀錄檔沒有 webhook；考卷期與 K 線快取只顯示資訊 |
 
 ---
@@ -251,7 +251,7 @@ flowchart TD
 | `state/paper_rebalance.db` | 2026-10-26 以前的兩資產主帳戶（已轉到 paper_main.db），只留作紀錄 | 不再寫入 |
 | `state/research/holdout.json` | 考卷期結果（只考一次） | **不能** |
 | `state/forecast/funding_long.jsonl` | 幣安資金費率做多的前瞻紀錄（2026-11-02 起，每週一補記，只新增；DESIGN 6.7） | 能從幣安公開資料重算，但紀錄本身是前瞻證據，不要刪 |
-| `state/forecast/kronos_ls.jsonl`、`kronos_judge.jsonl` | Kronos 每天 02:00 的多空預測、營運者的判斷（2026-11-03 起，只新增；DESIGN 6.7） | 判斷無法重建，紀錄是前瞻證據，不要刪；備份會帶到 |
+| `state/forecast/kronos_ls.jsonl`、`kronos_judge.jsonl` | Kronos 每天 00:00 的多空預測、營運者的判斷（2026-11-03 起，只新增；DESIGN 6.7） | 判斷無法重建，紀錄是前瞻證據，不要刪；備份會帶到 |
 | `state/paper_rebalance.paused` | 有這個檔案就暫停；主管（`../Cashflow_orchestrator`）遇到真單訂單 unknown／rejected、送單沒跑完會自動建立 | 刪掉＝恢復（由營運者決定） |
 | `data/bars.db`、`data/funding_ethusdt.json` | K 線快取（MAX ethtwd／btctwd／usdttwd、Binance 現貨與 ETHUSDT 合約 1h）、幣安資金費率；研究與前瞻紀錄用 | 能（`fetch_bars.py`、`fetch_binance.py` 重抓） |
 | `logs/*.log` | 排程輸出 | 可刪 |

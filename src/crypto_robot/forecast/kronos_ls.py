@@ -1,8 +1,8 @@
 """Kronos＋人工判斷的多空前瞻紀錄（DESIGN.md 6.7，2026-11-02 使用者同意）。**只記錄、不下單**；規則與標準看過結果後不改。
 
-每天台北 02:00 用 Binance ETHUSDT 永續合約過去 512 根 1h K 線，讓 Kronos 預測接下來 24 根（30 個樣本）；
+每天台北 00:00 用 Binance ETHUSDT 永續合約過去 512 根 1h K 線，讓 Kronos 預測接下來 24 根（30 個樣本）；
 平均漲跌超過來回手續費 0.10% 算看多／看空。營運者看完 08:30 推送後用 scripts/judge.py 記自己的判斷（做多／做空／不做）。
-隔天 02:00 結算三種成績：只照 Kronos、只照營運者、兩者同方向才做。成本＝來回 0.10%＋持倉期間實際資金費率（多付空收）。
+隔天 00:00 結算三種成績：只照 Kronos、只照營運者、兩者同方向才做。成本＝來回 0.10%＋持倉期間實際資金費率（多付空收）。
 營運者的判斷從記錄當下的價格起算（看到的漲跌不算進成績）。紀錄只新增、不修改。研究統計用 float。
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ from crypto_robot.agents.data.resample import DAY_MS, day_start
 from crypto_robot.lab.futures import FEE, Funding
 from crypto_robot.lab.hourly import H, Series
 
-START_MS = int(datetime(2026, 11, 2, 18, tzinfo=timezone.utc).timestamp() * 1000)   # 台北 2026-11-03 02:00 起算
+START_MS = int(datetime(2026, 11, 2, 16, tzinfo=timezone.utc).timestamp() * 1000)   # 台北 2026-11-03 00:00 起算
 LOOKBACK, STEPS, SAMPLES = 512, 24, 30
 SAMPLING = {'T': 1.0, 'top_k': 0, 'top_p': 0.9}
 CHECK_N, FINAL_N, FINAL_T = 60, 150, 2.0
@@ -27,8 +27,8 @@ CALLS = {'long': 1, 'short': -1, 'flat': 0}
 
 
 def forecast_ts(now_ms: int) -> int:
-    """now 所在台北日的 02:00（UTC 毫秒）。"""
-    return day_start(now_ms) + 2 * H
+    """now 所在台北日的 00:00（UTC 毫秒）。"""
+    return day_start(now_ms)
 
 
 def model_input(eth: Series, ts: int) -> dict | None:
@@ -65,10 +65,10 @@ def append(path: Path, row: dict) -> None:
 
 
 def open_forecast(forecasts: list[dict], judgments: list[dict], now_ms: int) -> tuple[dict | None, str]:
-    """現在可以記判斷的那一筆預測（預測後、隔天 02:00 前、還沒記過）；不行就回傳原因。"""
+    """現在可以記判斷的那一筆預測（預測後、隔天 00:00 前、還沒記過）；不行就回傳原因。"""
     live = [f for f in forecasts if f['ts'] <= now_ms < f['ts'] + DAY_MS]
     if not live:
-        return None, '今天 02:00 還沒有 Kronos 預測（或已過隔天 02:00）'
+        return None, '今天 00:00 還沒有 Kronos 預測（或已過隔天 00:00）'
     f = live[-1]
     if any(j['ts'] == f['ts'] for j in judgments):
         return None, '這一筆已經記過判斷（紀錄只新增、不修改）'
@@ -90,7 +90,7 @@ def _net(d: int, entry: float, exit_: float, fund: Funding, a: int, b: int) -> f
 
 
 def settle(forecasts: list[dict], judgments: list[dict], eth: Series, fund: Funding, start: int = START_MS):
-    """回傳（各軌道交易 [{ts, d, net}], 母體 {方向: [每天 02:00 進場的淨報酬]}）；只算已到隔天 02:00 的。"""
+    """回傳（各軌道交易 [{ts, d, net}], 母體 {方向: [每天 00:00 進場的淨報酬]}）；只算已到隔天 00:00 的。"""
     trades = {k: [] for k in TRACKS}
     pool = {1: [], -1: []}
     by_ts = {j['ts']: j for j in judgments}
@@ -160,8 +160,8 @@ def morning_line(forecasts: list[dict], judgments: list[dict], now_ms: int) -> s
     ts = forecast_ts(now_ms)
     f = next((x for x in reversed(forecasts) if x['ts'] == ts), None)
     if f is None:
-        return '🟡 Kronos：今天 02:00 沒有預測（看 logs/kronos_forecast.log）'
+        return '🟡 Kronos：今天 00:00 沒有預測（看 logs/kronos_forecast.log）'
     word = {1: '看多', -1: '看空', 0: '不判斷'}[f['dir']]
     done = any(j['ts'] == ts for j in judgments)
-    return (f'🔮 Kronos（02:00，只記錄）：{word}，30 個樣本 {f["up"]} 個看漲、平均 {f["mean"]:+.2%}；'
+    return (f'🔮 Kronos（00:00，只記錄）：{word}，30 個樣本 {f["up"]} 個看漲、平均 {f["mean"]:+.2%}；'
             + ('今天的判斷已記錄' if done else '記你的判斷：scripts/judge.py long|short|flat'))

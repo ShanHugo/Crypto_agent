@@ -5,7 +5,7 @@
     .venv\\Scripts\\python.exe scripts/judge.py flat                       # 今天不做
     .venv\\Scripts\\python.exe scripts/judge.py --status                   # 最近幾筆
 
-每天 02:00 那筆預測只能記一次、記了不能改；從記錄當下的 Binance 合約價格起算，到隔天 02:00 結算。
+每天 00:00 那筆預測只能記一次、記了不能改；從記錄當下的 Binance 合約價格起算，到隔天 00:00 結算。
 """
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ def main() -> int:
     with urllib.request.urlopen(PRICE, timeout=15) as r:
         price = float(json.loads(r.read())['price'])
     kl.append(JUDGMENTS, kl.judgment_row(f, args.call, price, now, args.reason))
-    print(f'已記錄：你 {WORD[kl.CALLS[args.call]]}、Kronos {WORD[f["dir"]]}，ETHUSDT 合約 {price:,.2f}，隔天 02:00 結算')
+    print(f'已記錄：你 {WORD[kl.CALLS[args.call]]}、Kronos {WORD[f["dir"]]}，ETHUSDT 合約 {price:,.2f}，隔天 00:00 結算')
     return 0
 
 

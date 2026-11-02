@@ -1,4 +1,4 @@
-"""每天台北 02:00 的 Kronos 多空預測（DESIGN.md 6.7，只記錄、不下單）。排程 kronos_forecast，紀錄在 logs/kronos_forecast.log。
+"""每天台北 00:00 的 Kronos 多空預測（DESIGN.md 6.7，只記錄、不下單）。排程 kronos_forecast，紀錄在 logs/kronos_forecast.log。
 
     .venv\\Scripts\\python.exe scripts/kronos_forecast.py            # 抓 Binance 合約 1h K 線與資金費率 → 預測 → 記到 state/forecast/kronos_ls.jsonl
     .venv\\Scripts\\python.exe scripts/kronos_forecast.py --dry-run  # 只印出，不寫
@@ -42,14 +42,14 @@ def main() -> int:
         print(f'{now:%H:%M} 已過 08:00，今天不補跑')
         return 0
     if int(now.timestamp() * 1000) < ts:
-        print('還沒到今天 02:00')
+        print('還沒到今天 00:00')
         return 0
     if any(r['ts'] == ts for r in kl.read(LOG)):
         print('今天已經預測過')
         return 0
     store = BarStore(ROOT / 'data' / 'bars.db')
     try:
-        for attempt in range(6):                     # 02:00 剛收盤的那根可能晚幾秒才出現
+        for attempt in range(6):                     # 00:00 剛收盤的那根可能晚幾秒才出現
             fb.fetch(store, 'ETHUSDT', futures=True)
             eth = Series.of(store.load(MARKET, 60))
             if (ts - H) in eth.idx:
