@@ -127,7 +127,7 @@ flowchart LR
 | 00:00 | `kronos_forecast` | 抓 Binance 合約 1h K 線與資金費率 → Kronos 預測接下來 24 小時（只記錄不下單，DESIGN 6.7）；08:00 後補跑就略過 | 不推送（08:30 報告多一行） |
 | 01:30～08:00 | — | 使用者允許自動交易的時段（2026-10-26 由 07:30 延長） | — |
 | 01:35、02:35…07:35 | `paper_rebalance` | 主模擬 → 影子 → 真單 → 讀真實餘額（下圖）；每一步同一天只做一次，已完成的在重試時略過 | 不推送 |
-| 08:30 | `paper_report` | 讀當天凌晨的結果（模擬、影子、真單、真實餘額、失敗過的重試）；整個時段都沒成功就推 🔴；**每週一**再推一則每週事實檢討；最後備份 | Discord |
+| 08:30 | `paper_report` | 推送真單、真實餘額、Kronos 預測（模擬、影子帳戶的結果只寫進 `logspaper_report.log`，2026-11-02 起不推送）；**每週一**再推一則每週事實檢討；最後備份 | Discord |
 | 00:10、03:10…21:10 | 主管 `\cashflow_orchestrator\`（另一個 repo） | 收集健康檢查；真錢 🔴 建立暫停檔，不是已知狀況的 🔴 叫醒 Claude 唯讀診斷 | 真錢或不是已知狀況的新 🔴 才推；已知 🔴 超過 12 小時沒解決再提醒一次 |
 | 隨時 | — | 操作台「虛擬貨幣」分頁（子分頁：總覽、前瞻紀錄、健康與排程、紀錄）：每分鐘自動刷新畫面；「重新讀取真實餘額」按鈕只查詢；前瞻紀錄只讀紀錄檔與本機 K 線，不連網 | 不推送 |
 
@@ -163,7 +163,7 @@ flowchart TD
 | Agent | 進入點 | 用到的程式 | 讀 | 寫 | 已知狀況自己處理 | 健康檢查 |
 |---|---|---|---|---|---|---|
 | 模擬再平衡 | `scripts/run_scheduled.cmd paper_rebalance` → `paper_rebalance.py` | `paper/multi_account.py`、`paper/fills.py`、`agents/strategy/rebalance_multi.py`、`exchange/max/public.py` | MAX 公開 API（ethtwd、usdttwd）、`state/paper_main.db`、暫停檔（主帳戶 band5） | db、`logs\paper_rebalance.log` | 失敗每小時重試到 07:35、時段外不動作、同一天不重複、低於最低下單量不調整、深度不足只部分成交（記在備註） | 今天凌晨有執行（重試中／重試後成功為 🟡）、最近 7 天沒漏跑、上次結束代碼 0、備註 |
-| 早上報告 | `run_scheduled.cmd paper_report paper_rebalance --report` | `paper_rebalance.py` 的 `morning_text`、`notify/discord.py` | db、`logs\paper_rebalance.log`、`.env` | Discord、`logs\paper_report.log` | Discord 失敗只寫紀錄，不中斷 | webhook 已設定、今天 08:25 後有執行且結束代碼 0 |
+| 早上報告 | `run_scheduled.cmd paper_report paper_rebalance --report` | `paper_rebalance.py` 的 `push_text`（只推真單、真實帳戶、Kronos；模擬帳戶的 `morning_text` 只寫紀錄）、`notify/discord.py` | db、`logs\paper_rebalance.log`、`.env` | Discord、`logs\paper_report.log` | Discord 失敗只寫紀錄，不中斷 | webhook 已設定、今天 08:25 後有執行且結束代碼 0 |
 | 影子帳戶：兩資產（同一個排程） | `paper_rebalance.py` 在主帳戶之後執行 | `paper/multi_account.py`、`agents/strategy/rebalance_multi.py` | MAX 公開 API（ethtwd）、`state/shadow_rebal2.db` | `state/shadow_rebal2.db` | 失敗不影響主帳戶，回傳結束代碼 1 讓下一小時重試；同一天不重複 | 和主帳戶相同的「今天凌晨執行」等檢查 |
 | 真單（同一個排程，`.env` 開啟才執行） | `paper_rebalance.py` 在影子帳戶之後、讀真實餘額之前執行（`live_trade.py` 只有 `--plan`／`--status`，不能手動下單） | `live/executor.py`、`exchange/max/private.py` 的 `MaxTradingClient` | MAX 私有 API、`.env`（LIVE_TRADING、LIVE_CONFIRM、LIVE_CAPITAL_CAP） | `state/live/live.db` | 安全檢查不過就整天不下單；同一天只做一次；結果不明不重送 | 今天有執行、沒被擋下、沒有 rejected／unknown 訂單 |
 | 真實帳戶（唯讀，同一個排程） | `paper_rebalance.py` 在真單之後執行（快照才是交易後的狀態）；操作台「重新讀取真實餘額」按鈕會呼叫 `live_check.py` | `live/readonly.py`、`exchange/max/private.py` 的 `MaxPrivateClient`（只有查詢方法） | `.env` 的 MAX 金鑰、MAX 私有 API、公開 IP | `state/live/balances.jsonl` | 排程一天讀一次（按鈕可手動再讀）；失敗只記錄，不影響模擬帳戶 | 今天凌晨有讀到、公開 IP 和白名單相同、讀取成功 |

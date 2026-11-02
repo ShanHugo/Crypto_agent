@@ -33,7 +33,7 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 | 想改 | 檔案 |
 |---|---|
 | 主帳戶／影子帳戶的規則、初始資金、手續費 | `scripts/paper_rebalance.py` 開頭的 `MAIN`、`SHADOW`、`INITIAL`、`TAKER_FEE` |
-| 08:30 通知內容 | `scripts/paper_rebalance.py` 的 `message()`、`morning_text()` |
+| 08:30 通知內容 | `scripts/paper_rebalance.py` 的 `push_text()`（推送：真單、真實帳戶、Kronos）；模擬帳戶的 `message()`、`morning_text()` 只寫紀錄 |
 | 模擬成交、帳戶紀錄 | `src/crypto_robot/paper/multi_account.py`（`run_day`、`day_report`、`import_two_asset`）、`paper/fills.py`；交易時段 `WINDOW` 在 `paper/rebalance_account.py` |
 | 再平衡判斷（研究與模擬共用） | `src/crypto_robot/agents/strategy/rebalance.py`；多資產是 `rebalance_multi.py` |
 | 排程時間 | `scripts/register_tasks.ps1` 的 `$tasks`（改完請使用者以系統管理員重跑） |

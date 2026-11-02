@@ -333,10 +333,19 @@ def kronos_line() -> str:
         return f'🟡 Kronos 紀錄讀取失敗：{type(e).__name__}'
 
 
+def push_text() -> str:
+    """推送 Discord 的內容：只有真單、真實帳戶與 Kronos（營運者 2026-11-02 要求模擬帳戶不推送，仍印在紀錄裡）。"""
+    today = datetime.now(TAIPEI).date()
+    lines = ['⏸️ 已暫停（state/paper_rebalance.paused），凌晨沒有交易'] if PAUSE_FILE.exists() else []
+    lines += [ln for ln in (live_run_line(today) + live_line(today)).split('\n') if ln]
+    return '\n'.join(lines + [kronos_line()])
+
+
 async def report(no_send: bool) -> int:
     load_dotenv(ROOT / '.env')
-    text = morning_text() + '\n' + kronos_line()
-    print(text)
+    print(morning_text() + '\n')
+    text = push_text()
+    print('推送內容：\n' + text)
     if not no_send:
         async with aiohttp.ClientSession() as session:
             await send(session, os.getenv('PAPER_WEBHOOK_URL') or os.getenv('DISCORD_WEBHOOK_URL'), text)
