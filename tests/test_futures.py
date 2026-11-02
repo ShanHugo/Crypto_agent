@@ -2,7 +2,7 @@ from decimal import Decimal as D
 
 from crypto_robot.core.models import Bar
 from crypto_robot.lab import futures as fu
-from crypto_robot.lab.direction3h import DEV_START as T0, H, Series
+from crypto_robot.lab.hourly import DEV_START as T0, H, Series
 
 
 def hourly(prices):

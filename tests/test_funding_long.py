@@ -2,7 +2,7 @@ from decimal import Decimal as D
 
 from crypto_robot.core.models import Bar
 from crypto_robot.forecast import funding_long as fl
-from crypto_robot.lab.direction3h import H, Series
+from crypto_robot.lab.hourly import H, Series
 from crypto_robot.lab.futures import FEE, Funding
 
 S0 = fl.START_MS

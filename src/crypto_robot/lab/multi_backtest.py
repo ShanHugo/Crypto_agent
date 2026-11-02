@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Callable
 
 from crypto_robot.agents.strategy.rebalance_multi import MultiParams, needs_rebalance, target_deltas
 from crypto_robot.core.models import Bar
@@ -27,10 +26,8 @@ def align(daily: dict[str, list[Bar]]) -> list[tuple[int, dict[str, Bar]]]:
 
 
 def run_multi(daily: dict[str, list[Bar]], start_ms: int, end_ms: int, p: MultiParams, cp: CostParams,
-              *, initial: Decimal = Decimal(1_000_000), rebalance: bool = True,
-              decide: Callable[[int, dict, Decimal, dict], bool] | None = None) -> Result:
-    """trades 的 reason：init（期初建倉）、rebal-buy、rebal-sell；entry_price 是成交價，qty 正買負賣。
-    decide(日 K ts, qty, cash, 收盤價)：取代 needs_rebalance 決定隔天要不要調（第十六輪用）。"""
+              *, initial: Decimal = Decimal(1_000_000), rebalance: bool = True) -> Result:
+    """trades 的 reason：init（期初建倉）、rebal-buy、rebal-sell；entry_price 是成交價，qty 正買負賣。"""
     assets = [a for a, _ in p.targets]
     res = Result(initial)
     cash = initial
@@ -73,7 +70,7 @@ def run_multi(daily: dict[str, list[Bar]], start_ms: int, end_ms: int, p: MultiP
         elif pending:
             trade(ts, bars, False)
         closes = {a: bars[a].close for a in assets}
-        pending = rebalance and (decide(ts, qty, cash, closes) if decide else needs_rebalance(qty, cash, closes, p))
+        pending = rebalance and needs_rebalance(qty, cash, closes, p)
         res.bars_in_position += 1
         res.equity.append((ts, cash + sum(qty[a] * closes[a] for a in assets)))
     return res

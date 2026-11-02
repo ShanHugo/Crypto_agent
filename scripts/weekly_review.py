@@ -29,7 +29,7 @@ from crypto_robot import weekly  # noqa: E402
 from crypto_robot.core.timeutil import TAIPEI  # noqa: E402
 from crypto_robot.forecast import funding_long  # noqa: E402
 from crypto_robot.lab import futures  # noqa: E402
-from crypto_robot.lab.direction3h import Series  # noqa: E402
+from crypto_robot.lab.hourly import Series  # noqa: E402
 from crypto_robot.store.bars import BarStore  # noqa: E402
 from crypto_robot.live.executor import LiveStore  # noqa: E402
 from crypto_robot.notify.discord import send  # noqa: E402

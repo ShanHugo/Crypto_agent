@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from crypto_robot.lab.direction3h import DEV_END, DEV_MID, DEV_START, H, Series, slots, _ms
+from crypto_robot.lab.hourly import DEV_END, DEV_MID, DEV_START, H, Series, ms as _ms, slots
 
 MARKET = 'binancef_ethusdt'
 FEE = 0.0010

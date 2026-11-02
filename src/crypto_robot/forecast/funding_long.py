@@ -11,7 +11,7 @@ import statistics as st
 from datetime import datetime, timezone
 from pathlib import Path
 
-from crypto_robot.lab.direction3h import H, Series
+from crypto_robot.lab.hourly import H, Series
 from crypto_robot.lab.futures import Funding, Variant, points, signal, trade_net
 
 START_MS = int(datetime(2026, 11, 2, tzinfo=timezone.utc).timestamp() * 1000)   # commit 之後的第一期（台北 11/02 08:00）
