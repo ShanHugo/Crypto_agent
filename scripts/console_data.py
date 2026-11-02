@@ -140,8 +140,10 @@ def forecast_data(now: datetime) -> dict:
     fc, jd = kl.read(d / 'kronos_ls.jsonl'), kl.read(d / 'kronos_judge.jsonl')
     calls = {j['ts']: j for j in jd}
     day = lambda ts: datetime.fromtimestamp(ts / 1000, TAIPEI).strftime('%Y-%m-%d %H:%M')   # noqa: E731
+    now_ms = int(now.replace(tzinfo=TAIPEI).timestamp() * 1000)
     return {
-        'today': kl.morning_line(fc, jd, int(now.replace(tzinfo=TAIPEI).timestamp() * 1000)),
+        'today': kl.morning_line(fc, jd, now_ms),
+        'can_judge': kl.open_forecast(fc, jd, now_ms)[0] is not None,
         'kronos': [{'at': day(f['ts']), 'dir': f['dir'], 'up': f['up'], 'samples': f['samples'], 'mean': f['mean'],
                     'entry': f['entry'], 'call': calls[f['ts']]['call'] if f['ts'] in calls else None,
                     'reason': calls[f['ts']].get('reason', '') if f['ts'] in calls else ''} for f in fc[-14:]],
