@@ -32,6 +32,7 @@
 - [6. 想改功能要改哪裡](#6-想改功能要改哪裡)
 - [7. 狀態檔地圖](#7-狀態檔地圖)
 - [8. 安全邊界](#8-安全邊界)
+- [9. 幣安合約 24 小時 Agent（規劃中）](#9-幣安合約-24-小時-agent規劃中)
 
 ---
 
@@ -274,3 +275,57 @@ flowchart TD
 - 自動交易：2026-11-03 起營運者允許 24 小時；現貨程式目前仍只在台北時間 01:30～08:00 動作。
 - 研究：先訂標準再看結果；ETH 研究期 2021–2023 已看過六次以上、考卷期已在第三輪用掉（之後跑 2024 起的資料只當參考）；山寨幣與 BTC 2024-07 起的考卷期還沒用過。
 - 主管（`../Cashflow_orchestrator`）唯一會自己做的動作是建立暫停檔；恢復由營運者決定。
+
+---
+
+## 9. 幣安合約 24 小時 Agent（規劃中）
+
+最終目的（DESIGN 6.6，2026-11-03）。**現在只有骨架**：`src/crypto_robot/futures_agent/agent.py` 的 `tick()`（純函式，測試 `tests/test_futures_agent.py`），
+策略固定 `NoStrategy`（永遠不持倉），沒有連 Binance 私有 API、沒有下單、沒有轉帳的程式。虛線框是還沒寫的部分，照關卡解鎖。
+
+**常駐流程**（這台電腦 24 小時開機；一個常駐程序，不是每天一次的排程）：
+
+```mermaid
+flowchart TD
+    BOOT[Windows 開機／登入<br/>排程 futures_agent：開機啟動・當掉自動重啟] --> RUN[常駐程序<br/>每根 1h K 線收盤醒來一次]
+    RUN --> HB[寫心跳檔<br/>state/futures/heartbeat.json]
+    RUN --> SNAP[組快照<br/>公開：K 線・標記價格・資金費率<br/>私有：權益・持倉・停損單]
+    SNAP --> TICK[tick（agent.py，純函式）<br/>安全檢查 → 策略 → 動作清單]
+    TICK --> MODE{執行模式}
+    MODE -- off（現在） --> LOG[只寫紀錄]
+    MODE -- paper（第 4 關） --> PAPER[模擬成交<br/>真實掛單簿・資金費率]
+    MODE -- live（第 5 關） --> EXE[下單＋交易所端停損單<br/>client id 先記再送・結果不明就停]
+    PAPER --> REC[(state/futures/futures.db)]
+    EXE --> REC
+    LOG --> REC
+    REC --> RPT[08:30 推送一行<br/>週報一段]
+    HB --> HC[health.py：心跳超過 2 小時 🔴]
+    HC --> SUP[主管 Cashflow_orchestrator<br/>🔴 建立暫停檔]
+    SUP -. 暫停檔 .-> TICK
+    classDef todo stroke-dasharray: 5 5
+    class BOOT,HB,SNAP,PAPER,EXE,REC,RPT,HC todo
+```
+
+**tick 的安全順序**（順序就是優先順序；已實作）：
+
+```mermaid
+flowchart TD
+    S[快照] --> A{已永久停止？}
+    A -- 是 --> HALT[halt：什麼都不做]
+    A -- 否 --> B{權益 ≤ 起始資金 − 最多可賠？}
+    B -- 是 --> STOP[有持倉就平倉 → stop_forever<br/>不補錢・不轉帳]
+    B -- 否 --> C{有持倉但交易所沒有停損單？}
+    C -- 是 --> FIX[先補停損單 place_stop]
+    C -- 否 --> D
+    FIX --> D{暫停檔／資料超過 2 小時？}
+    D -- 是 --> HOLD[hold：不開新倉・不換方向]
+    D -- 否 --> E{策略方向 ＝ 現在方向？}
+    E -- 是 --> HOLD2[hold]
+    E -- 否 --> F[先平倉 → 依槓桿上限開新倉<br/>同時掛停損單]
+```
+
+| 關卡 | 解鎖什麼 | 要先做的 |
+|---|---|---|
+| 3 合約研究 | 真正的策略（取代 `NoStrategy`） | `/research-round` 先訂標準；回測含手續費、資金費率、強平、24 小時交易次數 |
+| 4 合約模擬（≥ 1 個月） | 常駐程序、排程、心跳、`paper` 模式、健康檢查、推送 | 查核 Binance exchangeInfo（數量單位、最小名目）、維持保證金、標記價格 |
+| 5 合約真單 | `live` 模式、私有 API（只有合約下單與查詢） | 營運者自己建金鑰（不開提領、只開合約、IP 白名單）、手動轉入資金；`capital`、`loss_cap` 寫進設定 |
