@@ -64,7 +64,7 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 ## 省 token
 
 - 維運問題（漏跑、沒推送、燈號）看 `docs/ARCHITECTURE.md`；它有快速索引、Agent 責任表、出錯流程圖。
-- `docs/DESIGN.md` 有 600 多行，**不要整份讀**：用 Grep 找需要的章節（第 0 節：和原始規格的差異；第 1 節：MAX API 查核；第 5 節：下單安全（client_oid、訂單狀態、金鑰）；6.3：十六輪研究結果；6.4.1：模擬帳戶；6.5：真單；6.6：槓桿關卡；6.7：走勢預測草案）。兩個專案共用的主管在另一個 repo `../Cashflow_orchestrator`（設計在它的 `docs/DESIGN.md`）。
+- `docs/DESIGN.md` 有 600 多行，**不要整份讀**：用 Grep 找需要的章節（第 0 節：和原始規格的差異；第 1 節：MAX API 查核；第 5 節：下單安全（client_oid、訂單狀態、金鑰）；6.3：十六輪研究結果；6.4.1：模擬帳戶；6.5：真單；6.6：槓桿關卡；6.7：走勢預測與前瞻紀錄；6.8：技術面與基本面研究 Agent 草案）。兩個專案共用的主管在另一個 repo `../Cashflow_orchestrator`（設計在它的 `docs/DESIGN.md`）。
 - 第 2～4 節大多是原始規格的常駐 Agent 與 EMA 規則，沒有實作，每節開頭有現況說明；改模擬帳戶或真單時不用看（2.4 目錄除外）。
 - 沒通過的研究程式已刪除，要找回就看 `git show ff7425a --stat`（第 1、2、4 輪）、`git show b112076 --stat`（第 6～9 輪）、`git show c67c3b1 --stat`（第 10 輪）、`git show b846628 --stat`（第 11 輪槓桿）、`git checkout 98eae81 -- <檔名>`（第 12、13、15、16 輪：3 小時方向、跌破後做多、Kronos）。
 - 常用流程用 skill：`/paper-status`（看模擬帳戶）、`/ship`（測試＋commit＋push）、`/research-round`（新一輪研究的固定步驟）。
