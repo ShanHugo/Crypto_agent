@@ -281,7 +281,7 @@ flowchart TD
 ## 9. 幣安合約 24 小時 Agent（規劃中）
 
 最終目的（DESIGN 6.6，2026-11-03）。**現在只有骨架**：`src/crypto_robot/futures_agent/agent.py` 的 `tick()`（純函式，測試 `tests/test_futures_agent.py`），
-策略固定 `NoStrategy`（永遠不持倉），沒有連 Binance 私有 API、沒有下單、沒有轉帳的程式。虛線框是還沒寫的部分，照關卡解鎖。
+策略固定 `NoStrategy`（永遠不持倉）；部位大小已接上第十七輪通過的 EWMA 波動預測（`ewma_vol`、`leverage`）；沒有連 Binance 私有 API、沒有下單、沒有轉帳的程式。虛線框是還沒寫的部分，照關卡解鎖。
 
 **常駐流程**（這台電腦 24 小時開機；一個常駐程序，不是每天一次的排程）：
 
@@ -289,7 +289,7 @@ flowchart TD
 flowchart TD
     BOOT[Windows 開機／登入<br/>排程 futures_agent：開機啟動・當掉自動重啟] --> RUN[常駐程序<br/>每根 1h K 線收盤醒來一次]
     RUN --> HB[寫心跳檔<br/>state/futures/heartbeat.json]
-    RUN --> SNAP[組快照<br/>公開：K 線・標記價格・資金費率<br/>私有：權益・持倉・停損單]
+    RUN --> SNAP[組快照<br/>公開：K 線・標記價格・資金費率<br/>EWMA 預測波動 ewma_vol<br/>私有：權益・持倉・停損單]
     SNAP --> TICK[tick（agent.py，純函式）<br/>安全檢查 → 策略 → 動作清單]
     TICK --> MODE{執行模式}
     MODE -- off（現在） --> LOG[只寫紀錄]
@@ -321,7 +321,7 @@ flowchart TD
     D -- 是 --> HOLD[hold：不開新倉・不換方向]
     D -- 否 --> E{策略方向 ＝ 現在方向？}
     E -- 是 --> HOLD2[hold]
-    E -- 否 --> F[先平倉 → 依槓桿上限開新倉<br/>同時掛停損單]
+    E -- 否 --> F[先平倉 → 開新倉<br/>槓桿＝min（上限, 目標波動 ÷ 預測波動）<br/>同時掛停損單・沒有波動預測就不開]
 ```
 
 | 關卡 | 解鎖什麼 | 要先做的 |

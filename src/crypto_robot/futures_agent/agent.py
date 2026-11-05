@@ -5,7 +5,9 @@
 2. 權益 ≤ 起始資金 − 最多可賠金額 → 全部平倉並永久停止（不補錢、不轉帳）。
 3. 有持倉卻沒有交易所端停損單 → 先補停損（當機、斷網時靠它保命），即使在暫停中。
 4. 暫停檔、資料過舊 → 不開新倉、不換方向（已有持倉留著，靠停損單保護）。
-5. 策略要的方向和現在不同 → 先平倉，再依槓桿上限開新倉並同時掛停損單。
+5. 策略要的方向和現在不同 → 先平倉，再依波動調整後的槓桿開新倉並同時掛停損單；沒有波動預測就不開新倉。
+
+部位大小（第十七輪，DESIGN 6.3：EWMA 波動預測研究期與考卷都通過）：槓桿＝min(槓桿上限, 目標波動 ÷ 預測波動)，預期越動盪部位越小。
 """
 from __future__ import annotations
 
@@ -22,6 +24,7 @@ class AgentConfig:
     capital: Decimal = ZERO          # 營運者手動轉入合約帳戶的金額（USDT），第 5 關前填
     loss_cap: Decimal = ZERO         # 最多可賠（USDT，約 10,000 台幣）；權益跌到 capital − loss_cap 就永久停止
     max_leverage: Decimal = Decimal(1)
+    target_vol: Decimal = Decimal('0.5')     # 年化目標波動；第 3、4 關定案前的暫定值
     stop_pct: Decimal = Decimal('0.05')      # 交易所端停損距離進場價
     qty_step: Decimal = Decimal('0.001')     # ETHUSDT 數量最小單位（第 4 關前用 exchangeInfo 查核）
     max_data_age_ms: int = 2 * 3600 * 1000
@@ -41,6 +44,7 @@ class Snapshot:
     price: Decimal                   # 標記價格
     equity: Decimal                  # 合約帳戶權益（USDT，含未實現損益）
     position: Position
+    vol: Decimal = ZERO              # 預測年化波動（ewma_vol）；0＝沒有預測
     paused: bool = False
     stopped: bool = False
 
@@ -73,11 +77,25 @@ def stop_price(entry: Decimal, side: int, cfg: AgentConfig) -> Decimal:
     return entry * (1 - side * cfg.stop_pct)
 
 
-def size(equity: Decimal, price: Decimal, cfg: AgentConfig) -> Decimal:
-    """名目金額 ≤ 權益 × 槓桿上限，數量無條件捨去到最小單位。"""
+def ewma_vol(daily_returns: list[Decimal], lam: Decimal = Decimal('0.94'), warmup: int = 30) -> Decimal:
+    """台北日報酬（舊到新）的 EWMA 預測年化波動；前 warmup 天的平均平方報酬當起點，不夠就回傳 0。"""
+    if len(daily_returns) <= warmup:
+        return ZERO
+    var = sum(r * r for r in daily_returns[:warmup]) / warmup
+    for r in daily_returns[warmup:]:
+        var = lam * var + (1 - lam) * r * r
+    return (var * 365).sqrt()
+
+
+def leverage(vol: Decimal, cfg: AgentConfig) -> Decimal:
+    return ZERO if vol <= 0 else min(cfg.max_leverage, cfg.target_vol / vol)
+
+
+def size(equity: Decimal, price: Decimal, cfg: AgentConfig, vol: Decimal) -> Decimal:
+    """名目金額 ≤ 權益 × 波動調整後的槓桿，數量無條件捨去到最小單位。"""
     if equity <= 0 or price <= 0:
         return ZERO
-    return (equity * cfg.max_leverage / price / cfg.qty_step).to_integral_value(ROUND_DOWN) * cfg.qty_step
+    return (equity * leverage(vol, cfg) / price / cfg.qty_step).to_integral_value(ROUND_DOWN) * cfg.qty_step
 
 
 def tick(snap: Snapshot, cfg: AgentConfig, strategy: Strategy) -> list[Action]:
@@ -95,7 +113,7 @@ def tick(snap: Snapshot, cfg: AgentConfig, strategy: Strategy) -> list[Action]:
     if want == cur:
         return pre + [Action('hold')]
     acts = [Action('close', cur, abs(pos.qty))] if cur else pre
-    qty = size(snap.equity, snap.price, cfg) if want else ZERO
+    qty = size(snap.equity, snap.price, cfg, snap.vol) if want else ZERO
     if qty > 0:
         acts.append(Action('open', want, qty, stop_price(snap.price, want, cfg)))
-    return acts or [Action('hold', note='數量太小')]
+    return acts or [Action('hold', note='沒有波動預測' if want and snap.vol <= 0 else '數量太小')]
