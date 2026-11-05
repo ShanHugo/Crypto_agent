@@ -1,6 +1,7 @@
 """研究工具：比例再平衡（第三輪，ETH＋台幣）與三資產再平衡（第五輪，ETH＋USDT＋台幣，用 --family rebalance3，沒有考卷）、
 Binance 永續合約（第十四輪，--family futures；先跑 scripts/fetch_binance.py --futures）、
-技術面與基本面研究 Agent（第十七輪，--family ta_fa；再先跑 scripts/fetch_macro.py）。
+技術面與基本面研究 Agent（第十七輪，--family ta_fa；再先跑 scripts/fetch_macro.py）、
+Kronos 加外部資訊再訓練（第十八輪，--family kronos_cov：--stage data 產生訓練資料，訓練與預測用 scripts/kronos_cov.py）。
 
     .venv\\Scripts\\python.exe scripts/research.py --stage dev
     .venv\\Scripts\\python.exe scripts/research.py --stage holdout       # 已考過：只顯示當時的結果
@@ -20,13 +21,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 
-from crypto_robot.lab import futures, multi_research, periods, rebalance_research, rebalance_variants, ta_fa  # noqa: E402
+from crypto_robot.lab import futures, multi_research, periods, rebalance_research, rebalance_variants, ta_fa, kronos_cov  # noqa: E402
 from crypto_robot.lab.hourly import Series  # noqa: E402
 from crypto_robot.store.bars import BarStore  # noqa: E402
 
 HOLDOUT_FILE = ROOT / 'state' / 'research' / 'holdout.json'
 HOLDOUT_FU = ROOT / 'state' / 'research' / 'holdout_futures.json'
 HOLDOUT_TF = ROOT / 'state' / 'research' / 'holdout_ta_fa.json'
+HOLDOUT_KC = ROOT / 'state' / 'research' / 'holdout_kronos_cov.json'
+KC_DEV = ROOT / 'state' / 'research' / 'kronos_cov_dev.json'
+KC_PREDS = ROOT / 'state' / 'research' / 'kronos_cov_preds.jsonl'
 
 
 def git_commit() -> str:
@@ -103,11 +107,45 @@ def run_ta_fa(args) -> None:
     print(f'已寫入 {out}')
 
 
+def run_kronos_cov(args) -> None:
+    if args.stage == 'holdout' and HOLDOUT_KC.exists():
+        print('考卷已經考過，以下是當時的結果（不重算）：')
+        print(HOLDOUT_KC.read_text(encoding='utf-8'))
+        return
+    store = BarStore(args.db)
+    eth = Series.of(store.load(futures.MARKET, 60))
+    store.close()
+    fund = futures.Funding([(t, float(r)) for t, r in json.loads((ROOT / 'data' / 'funding_ethusdt.json').read_text(encoding='utf-8'))])
+    if args.stage == 'data':
+        info = kronos_cov.write_csv(ROOT / 'data' / 'kronos_cov' / 'eth_1h.csv', eth, fund, ta_fa.load_macro(ROOT / 'data' / 'macro'))
+        print(json.dumps(info, ensure_ascii=False, indent=2))
+        return
+    preds = kronos_cov.read_preds(KC_PREDS)
+    res = kronos_cov.run_dev(preds, eth, fund)
+    exam = None
+    if args.stage == 'dev':
+        KC_DEV.write_text(json.dumps({'passed': res['passed'], 'have': res['have'], 'at': datetime.now().isoformat()}, ensure_ascii=False), encoding='utf-8')
+    else:
+        if not res['passed']['K2']:
+            sys.exit('研究期 K2 沒通過，不考')
+        commit = git_commit()
+        if commit.endswith('-dirty'):
+            sys.exit('src/ 有未 commit 的修改；先 commit')
+        exam = {**kronos_cov.run_exam(preds, eth, fund), 'commit': commit, 'at': datetime.now().isoformat()}
+        HOLDOUT_KC.write_text(json.dumps(exam, ensure_ascii=False, indent=2), encoding='utf-8')
+    text = kronos_cov.report(res, datetime.now().strftime('%Y-%m-%d %H:%M'), exam)
+    out = ROOT / 'reports' / f'research_{args.stage}_kronos_cov_{datetime.now():%Y%m%d}.md'
+    out.parent.mkdir(exist_ok=True)
+    out.write_text(text, encoding='utf-8')
+    print(text)
+    print(f'已寫入 {out}')
+
+
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
-    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'futures', 'ta_fa'], default='rebalance')
-    ap.add_argument('--stage', choices=['dev', 'holdout'], required=True)
+    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'futures', 'ta_fa', 'kronos_cov'], default='rebalance')
+    ap.add_argument('--stage', choices=['dev', 'holdout', 'data'], required=True)
     ap.add_argument('--variant', help='考卷期要考的規則名稱（見研究期報告）')
     ap.add_argument('--db', default=str(ROOT / 'data' / 'bars.db'))
     args = ap.parse_args()
@@ -117,6 +155,9 @@ def main() -> None:
         return
     if args.family == 'ta_fa':
         run_ta_fa(args)
+        return
+    if args.family == 'kronos_cov':
+        run_kronos_cov(args)
         return
 
     if args.family == 'rebalance3':

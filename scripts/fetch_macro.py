@@ -6,6 +6,7 @@
 - stablecoins：DefiLlama 穩定幣總流通量（美元）
 - WALCL、RRPONTSYD、WTREGEN、DTWEXBGS、DFII10：FRED（CSV，缺值略過）
 - premium_ethusdt：Binance ETHUSDT 永續合約溢價指數日 K 的收盤（基差）
+- premium_ethusdt_1h：同上的 1h K（第十八輪 Kronos 外部資訊用；時間是 K 線開盤）
 """
 from __future__ import annotations
 
@@ -21,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'data' / 'macro'
 FRED = ['WALCL', 'RRPONTSYD', 'WTREGEN', 'DTWEXBGS', 'DFII10']
-PREMIUM = 'https://fapi.binance.com/fapi/v1/premiumIndexKlines?symbol=ETHUSDT&interval=1d&startTime={}&limit=1000'
+PREMIUM = 'https://fapi.binance.com/fapi/v1/premiumIndexKlines?symbol=ETHUSDT&interval={}&startTime={}&limit=1000'
 
 
 def _get(url: str) -> bytes:
@@ -42,11 +43,11 @@ def stablecoins() -> list:
     return [[int(r['date']) * 1000, float(r['totalCirculatingUSD'].get('peggedUSD', 0))] for r in rows]
 
 
-def premium() -> list:
+def premium(interval: str = '1d') -> list:
     out, since = [], 1_569_888_000_000
     now = int(time.time() * 1000)
     while True:
-        rows = json.loads(_get(PREMIUM.format(since)))
+        rows = json.loads(_get(PREMIUM.format(interval, since)))
         out += [[int(k[0]), float(k[4])] for k in rows if int(k[6]) < now]     # 只留已收盤
         if len(rows) < 1000:
             return out
@@ -57,7 +58,7 @@ def premium() -> list:
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     OUT.mkdir(parents=True, exist_ok=True)
-    jobs = {**{s: (lambda s=s: fred(s)) for s in FRED}, 'stablecoins': stablecoins, 'premium_ethusdt': premium}
+    jobs = {**{s: (lambda s=s: fred(s)) for s in FRED}, 'stablecoins': stablecoins, 'premium_ethusdt': premium, 'premium_ethusdt_1h': lambda: premium('1h')}
     for name, fn in jobs.items():
         rows = fn()
         (OUT / f'{name}.json').write_text(json.dumps(rows), encoding='utf-8')
