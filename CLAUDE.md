@@ -13,6 +13,7 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 - 排程：01:35 執行 `paper_rebalance`（不推送，失敗每小時重試到 07:35）、00:00 執行 `kronos_forecast`（Kronos 多空預測，只記錄；模型在 `../_vendor/kronos_venv`，真單的 `.venv` 不裝 torch）、08:30 執行 `paper_report`（推送 Discord）。營運者每天用 `scripts/judge.py long|short|flat` 記判斷。
 - **影子帳戶**（同一個排程、同樣 6,000 元，只記錄）：原本的兩資產 `rebal-eth50-band10`（ETH 50%、台幣 50%），2026-10-27 凌晨重新建倉；狀態在 `state/shadow_rebal2.db`。
 - **第十七輪（2026-11-05，技術面與基本面 Agent，6 組）**：方向 5 組都沒過；**EWMA 波動預測研究期與考卷都通過**（可用來調合約部位大小，不能預測方向），考卷已用掉。
+- **第十八輪（2026-11-06，Kronos 加資金費率、利率等 7 項資訊再訓練）**：研究期原版、再訓練、再訓練＋資訊都沒過（每筆仍虧損），不進考卷；程式已刪除（`git checkout 939e29f`）。
 - 十六輪研究共 201 組（第十一輪是槓桿、第十二～十四輪是短線方向、跌破後做多、Binance 合約資金費率，第十五、十六輪是 Kronos 模型預測 3 小時／隔天，都沒過；第十四輪 `fund_streak` 只差 t、第十六輪 `d1_agree` 破例考卷也都沒過）：只有現貨比例再平衡留下（營運者仍可能找新規則；照 `/research-round` 先訂標準）。**ETH 考卷期（2024-01-01 起）已用掉**，結果在 `state/research/holdout.json`。
 - **真單**：**2026-10-27 01:35 起開啟**（第一階段 6,000 元，上限 9,000 元），規則同主帳戶；計畫與 MAX 私有 API 查核在 `docs/DESIGN.md` 6.5。金鑰開查詢＋交易（沒開提領）。由 `.env` 的 `LIVE_TRADING=1`＋`LIVE_CONFIRM=I_UNDERSTAND` 開啟，每天 01:35 執行；預覽用 `scripts/live_trade.py --plan`、紀錄用 `--status`。跑滿 2 週（約 11/10）沒有 🔴 才討論加碼；金鑰絕不經過對話。
 - USDT 開了 MAX「閒置資產收益」（2026-10-28，APR 1%，不鎖倉）：真單權益會略高於模擬帳戶。
