@@ -281,7 +281,7 @@ flowchart TD
 ## 9. 幣安合約 24 小時 Agent（規劃中）
 
 最終目的（DESIGN 6.6，2026-11-03）。**現在只有骨架**：`src/crypto_robot/futures_agent/agent.py` 的 `tick()`（純函式，測試 `tests/test_futures_agent.py`），
-策略固定 `NoStrategy`（永遠不持倉）；部位大小已接上第十七輪通過的 EWMA 波動預測（`ewma_vol`、`leverage`）；沒有連 Binance 私有 API、沒有下單、沒有轉帳的程式。虛線框是還沒寫的部分，照關卡解鎖。
+策略固定 `NoStrategy`（永遠不持倉）；部位大小已接上第十七輪通過的 EWMA 波動預測（`ewma_vol`、`leverage`），但第二十輪顯示只做多時這樣調沒有比一直持有好，目前只算風險上限（DESIGN 6.3）；沒有連 Binance 私有 API、沒有下單、沒有轉帳的程式。虛線框是還沒寫的部分，照關卡解鎖。
 
 **常駐流程**（這台電腦 24 小時開機；一個常駐程序，不是每天一次的排程）：
 
