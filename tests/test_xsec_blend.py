@@ -51,6 +51,18 @@ def test_picks_for_kinds():
     assert bl.picks_for('blend', {T: dict(list(uni.items())[:10])}, preds, 'mon', [T]) == []     # 不足 20 個幣
 
 
+def test_blend_picks_matches_research_and_refuses_too_few():
+    n = 25
+    uni = {s: (0.0, float(n - i)) for i, s in enumerate(names(n))}
+    gbm = {s: float(i) for i, s in enumerate(names(n))}
+    ridge = {s: float(i * i) for i, s in enumerate(names(n))}
+    preds = {('gbm', 'mon'): {T: gbm}, ('ridge', 'mon'): {T: ridge}}
+    research = bl.picks_for('blend', {T: uni}, preds, 'mon', [T])[0]
+    assert bl.blend_picks(names(n), gbm, ridge, {s: v[1] for s, v in uni.items()}) == research[1:]
+    with pytest.raises(ValueError):
+        bl.blend_picks(names(n), {s: 1.0 for s in names(19)}, ridge, {s: v[1] for s, v in uni.items()})
+
+
 def coin(sym, rets, end=T):
     """從 end 往回排的每日報酬（最後一個是 end 前一天那根）。"""
     n = len(rets)

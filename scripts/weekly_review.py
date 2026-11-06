@@ -104,7 +104,7 @@ def kronos_section() -> str:
 
 
 def futures_section() -> str:
-    """gbm 前瞻模擬（DESIGN 6.16，只模擬）。失敗只回一行。"""
+    """blend 前瞻模擬（DESIGN 6.18，只模擬）。失敗只回一行。"""
     path = ROOT / 'state' / 'futures' / 'futures.db'
     try:
         if not path.exists():
@@ -115,7 +115,7 @@ def futures_section() -> str:
         finally:
             led.close()
     except Exception as e:   # noqa: BLE001
-        return f'gbm 前瞻模擬失敗：{type(e).__name__}: {e}'
+        return f'blend 前瞻模擬失敗：{type(e).__name__}: {e}'
 
 
 async def run(day: date, no_send: bool) -> int:

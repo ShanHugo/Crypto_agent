@@ -1,4 +1,4 @@
-"""gbm 前瞻模擬的每週目標（DESIGN.md 6.16）：補資料 → 選前 50 大 → 算特徵 → gbm → 寫 10 多 10 空。不用金鑰。
+"""blend 前瞻模擬的每週目標（DESIGN.md 6.18）：補資料 → 選前 50 大 → 算特徵 → gbm、ridge、動能排名平均 → 寫 10 多 10 空。不用金鑰。
 
     .venv\\Scripts\\python.exe scripts/xsec_forward.py              # 排程每天 08:05 執行；這週已經寫過就直接結束
     .venv\\Scripts\\python.exe scripts/xsec_forward.py --dry-run    # 算到最後但不寫目標，印出名單（可以在第一週之前試跑）
@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 
 from crypto_robot.core.timeutil import TAIPEI  # noqa: E402
-from crypto_robot.lab import xsec  # noqa: E402
+from crypto_robot.lab import xsec, xsec_blend  # noqa: E402
 from crypto_robot.lab.hourly import ms  # noqa: E402
 from crypto_robot.lab.xsec import D, W  # noqa: E402
 
@@ -135,12 +135,18 @@ def write_panel(coins: dict[str, xsec.Coin], t_last: int, now: int) -> dict:
     return {'universe': [c.sym for c in xsec.universe(coins, t_last)]}
 
 
-def predict(t: int) -> dict[str, float]:
+def predict(t: int) -> tuple[dict[str, float], dict[str, float]]:
+    """回傳 gbm、ridge 的預測。"""
     py = ROOT.parent / '_vendor' / 'ml_venv' / 'Scripts' / 'python.exe'
-    out = STATE / 'preds' / f'{t}.json'
     env = {**os.environ, 'PYTHONIOENCODING': 'utf-8'}
     subprocess.run([str(py), '-I', str(ROOT / 'scripts' / 'xsec_forward_train.py'), str(t)], check=True, env=env, cwd=ROOT)
-    return json.loads(out.read_text(encoding='utf-8'))
+    return tuple(json.loads((STATE / d / f'{t}.json').read_text(encoding='utf-8')) for d in ('preds', 'preds_ridge'))
+
+
+def read_mom(t: int) -> dict[str, float]:
+    """這週的動能排名（過去 28 天報酬）。"""
+    with PANEL.open(encoding='utf-8') as f:
+        return {r['sym']: float(r['ret_28d']) for r in csv.DictReader(f) if int(r['ts']) == t}
 
 
 def main() -> None:
@@ -160,7 +166,6 @@ def main() -> None:
             return
     start = time.time()
     STATE.mkdir(parents=True, exist_ok=True)
-    (STATE / 'preds').mkdir(exist_ok=True)
     existing = {p.stem for p in COINS.glob('*.json')}
     names = set(tradable_symbols())
     recent = [s for s in existing - names if (d := read_coin(s)['k']) and d[-1][0] >= now - LONG_GONE]
@@ -177,9 +182,9 @@ def main() -> None:
     info = write_panel(coins, t, now)
     if len(info['universe']) < xsec.MIN_UNI:
         sys.exit(f"選幣池只有 {len(info['universe'])} 個，不換倉")
-    preds = predict(t)
-    longs, shorts = xsec.select({s: preds[s] for s in info['universe']})
-    data = {'week': t, 'longs': longs, 'shorts': shorts, 'universe': info['universe'], 'created_at': now}
+    gbm, ridge = predict(t)
+    longs, shorts = xsec_blend.blend_picks(info['universe'], gbm, ridge, read_mom(t))
+    data = {'week': t, 'model': 'blend', 'longs': longs, 'shorts': shorts, 'universe': info['universe'], 'created_at': now}
     print(f"{datetime.fromtimestamp(t / 1000, TAIPEI):%Y-%m-%d} 做多 {longs}\n做空 {shorts}\n耗時 {time.time() - start:.0f} 秒", flush=True)
     if args.dry_run:
         print('試跑：沒有寫入目標')

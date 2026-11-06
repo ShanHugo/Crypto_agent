@@ -29,6 +29,15 @@ def blend_score(uni: dict, wd_preds: dict[str, dict], models: list[str], use_mom
     return {s: st.fmean(col[i] for col in cols) for i, s in enumerate(names)}
 
 
+def blend_picks(universe: list[str], gbm: dict[str, float], ridge: dict[str, float], mom: dict[str, float]) -> tuple[list[str], list[str]]:
+    """前瞻模擬（DESIGN 6.18）：這週的 blend 名單。三個分數都有的幣不足 20 個就報錯，不換倉。"""
+    uni = {s: (0.0, mom[s]) for s in universe if s in mom}
+    score = blend_score(uni, {'gbm': gbm, 'ridge': ridge}, ['gbm', 'ridge'])
+    if len(score) < MIN_UNI:
+        raise ValueError(f'三個分數都有的幣只有 {len(score)} 個，不換倉')
+    return xsec.select(score)
+
+
 def picks_for(kind: str, panel: dict, preds: dict, wd: str, ts: list[int]) -> list[tuple[int, list[str], list[str]]]:
     """kind：gbm 只用 gbm；blend 三個合體；blend_shuf 對照組（兩個打亂答案的模型，動能不靠訓練答案，不放）。"""
     out = []

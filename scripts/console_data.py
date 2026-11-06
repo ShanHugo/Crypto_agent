@@ -157,7 +157,7 @@ def forecast_data(now: datetime) -> dict:
 
 
 def futures_data() -> dict:
-    """gbm 前瞻模擬（DESIGN 6.16）：只讀 state/futures，檔案不存在也不會建立。"""
+    """blend 前瞻模擬（DESIGN 6.18）：只讀 state/futures，檔案不存在也不會建立。"""
     from crypto_robot.futures_agent import paper
     read = lambda p: json.loads(p.read_text(encoding='utf-8')) if p.exists() else None     # noqa: E731
     beat, target = read(FUTURES / 'heartbeat.json'), read(FUTURES / 'targets.json')
@@ -225,7 +225,7 @@ def main() -> None:
         hc.agent('live_trade', '真單', hc.check_live_trade(now, live_on, run_want, orders_want)),
         hc.agent('live', '真實帳戶（唯讀）', hc.check_live(now, live_records, keys_set, ref is not None)),
         hc.agent('kronos_forecast', 'Kronos 預測（00:00，只記錄）', hc.check_kronos(now, kronos_days())),
-        hc.agent('futures_paper', 'gbm 前瞻模擬（只模擬）', hc.check_futures_paper(now, futures['beat'], (futures['target'] or {}).get('week'))),
+        hc.agent('futures_paper', 'blend 前瞻模擬（只模擬）', hc.check_futures_paper(now, futures['beat'], (futures['target'] or {}).get('week'))),
     ]
     out = {
         'generated_at': now.isoformat(timespec='seconds'),

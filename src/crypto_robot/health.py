@@ -166,11 +166,11 @@ def check_kronos(now: datetime, days: set[date]) -> list[Check]:
                   '看 logs/kronos_forecast.log 與排程 kronos_forecast；只記錄，不影響交易')]
 
 
-FUTURES_SINCE = date(2026, 11, 9)     # gbm 前瞻模擬第一週（週一）
+FUTURES_SINCE = date(2026, 11, 9)     # blend 前瞻模擬第一週（週一）
 
 
 def check_futures_paper(now: datetime, beat: dict | None, week_ms: int | None) -> list[Check]:
-    """gbm 前瞻模擬（DESIGN 6.16，不碰真錢）。now 是台北時間；beat：state/futures/heartbeat.json；week_ms：targets.json 的週。"""
+    """blend 前瞻模擬（DESIGN 6.18，不碰真錢）。now 是台北時間；beat：state/futures/heartbeat.json；week_ms：targets.json 的週。"""
     if now.date() < FUTURES_SINCE:
         return [Check('前瞻模擬', 'ok', f'第一週是 {FUTURES_SINCE}')]
     out = []

@@ -19,8 +19,8 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 - **第二十一輪（2026-11-06，多幣排序，每週前 50 大、10 多 10 空，`mom`、`ridge`、`gbm`）**：研究期都沒過（最好的 `gbm` 每週 +0.34%、t 1.26、回撤 -30.8%）。營運者破例考 `gbm` 也沒過（每週 +0.58%、t 1.08、回撤 -49.8%），考卷已用掉；程式在 `lab/xsec.py`。
 - **第二十二輪（2026-11-06，同上改成每 3 天判斷，只測 `gbm`）**：研究期沒過（換算每週 +0.21%、t 0.75、回撤 -31.2%），參考段 2025～2026 更差（總報酬 -2.4%、回撤 -71.7%）；程式已刪除（`git checkout b00b6c8`）。
 - **第二十三輪（2026-11-06，`gbm` 每週版不放空波動最高 20%）**：研究期沒過（每週 +0.05%、t 0.23、回撤 -30.3%）；參考段每週 +0.51%、回撤 -23.1%，但不是樣本外；程式已刪除（`git checkout a201fe5`）。
-- **第二十四輪（2026-11-06，排名合體 `blend`、依波動調部位 `gbm_vt`、`blend_vt`）**：研究期都沒過（最好的 `blend` t 1.45）；參考段 `blend` 每週 +1.47%、t 3.27、回撤 -27.1%，不是乾淨考卷，獲利主要來自動能（動能研究期 t 0.37）。程式在 `lab/xsec_blend.py`，等營運者決定要不要破例並排前瞻（DESIGN 6.3、6.17）。
-- **gbm 前瞻模擬（2026-11-06 營運者破例同意，DESIGN 6.16）**：每週版 `gbm` 從 2026-11-09 起模擬，不用金鑰、不下單、不碰真錢；第 4 週查流程、第 30 週（約 2027-06-07）查績效。第 3 關不算過。下單程式還沒有，要到 testnet 階段另外畫圖。
+- **第二十四輪（2026-11-06，排名合體 `blend`、依波動調部位 `gbm_vt`、`blend_vt`）**：研究期都沒過（最好的 `blend` t 1.45）；參考段 `blend` 每週 +1.47%、t 3.27、回撤 -27.1%，不是乾淨考卷，獲利主要來自動能（動能研究期 t 0.37）。程式在 `lab/xsec_blend.py`；營運者破例讓 `blend` 進前瞻（DESIGN 6.3、6.17、6.18）。
+- **blend 前瞻模擬（2026-11-06 營運者破例同意，DESIGN 6.18，tick 規則在 6.16）**：`gbm`、`ridge`、動能排名平均，取代還沒開始的 `gbm` 單獨模擬（`gbm` 模型還是成員），從 2026-11-09 起模擬，不用金鑰、不下單、不碰真錢；第 4 週查流程、第 30 週（約 2027-06-07）查績效。第 3 關不算過。下單程式還沒有，要到 testnet 階段另外畫圖。
 - 十六輪研究共 201 組（第十一輪是槓桿、第十二～十四輪是短線方向、跌破後做多、Binance 合約資金費率，第十五、十六輪是 Kronos 模型預測 3 小時／隔天，都沒過；第十四輪 `fund_streak` 只差 t、第十六輪 `d1_agree` 破例考卷也都沒過）：只有現貨比例再平衡留下（營運者仍可能找新規則；照 `/research-round` 先訂標準）。**ETH 考卷期（2024-01-01 起）已用掉**，結果在 `state/research/holdout.json`。
 - **真單**：**2026-10-27 01:35 起開啟**（第一階段 6,000 元，上限 9,000 元），規則同主帳戶；計畫與 MAX 私有 API 查核在 `docs/DESIGN.md` 6.5。金鑰開查詢＋交易（沒開提領）。由 `.env` 的 `LIVE_TRADING=1`＋`LIVE_CONFIRM=I_UNDERSTAND` 開啟，每天 01:35 執行；預覽用 `scripts/live_trade.py --plan`、紀錄用 `--status`。跑滿 2 週（約 11/10）沒有 🔴 才討論加碼；金鑰絕不經過對話。
 - USDT 開了 MAX「閒置資產收益」（2026-10-28，APR 1%，不鎖倉）：真單權益會略高於模擬帳戶。
@@ -54,7 +54,7 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 | 真單執行與安全檢查 | `src/crypto_robot/live/executor.py`（`check_guards`、`plan_orders`、`run_live`）、`scripts/live_trade.py`（開關、設定、`--plan`）；紀錄 `state/live/live.db` |
 | 真實帳戶（唯讀）、IP 變動 | `src/crypto_robot/live/readonly.py`、`exchange/max/private.py` 的 `MaxPrivateClient`（只有查詢方法；會下單的是 `MaxTradingClient`）、`scripts/live_check.py`（`--accept-ip`）；紀錄在 `state/live/`（含公開 IP，絕不進 git） |
 | 幣安合約 24 小時 Agent（骨架，還不能下單） | `src/crypto_robot/futures_agent/agent.py`（`tick`、`AgentConfig`、`NoStrategy`）；流程圖在 `docs/ARCHITECTURE.md` 第 9 節 |
-| gbm 前瞻模擬（不碰真錢） | 模擬帳戶 `src/crypto_robot/futures_agent/paper.py`；常駐程序 `scripts/futures_paper.py`；每週目標 `scripts/xsec_forward.py`、訓練 `scripts/xsec_forward_train.py`；健康檢查 `health.py` 的 `check_futures_paper`；狀態 `state/futures/`；設計 DESIGN 6.16 |
+| blend 前瞻模擬（不碰真錢） | 模擬帳戶 `src/crypto_robot/futures_agent/paper.py`；常駐程序 `scripts/futures_paper.py`；每週目標 `scripts/xsec_forward.py`、訓練 `scripts/xsec_forward_train.py`、名單 `lab/xsec_blend.py` 的 `blend_picks`；健康檢查 `health.py` 的 `check_futures_paper`；狀態 `state/futures/`；設計 DESIGN 6.18、6.16 |
 | 研究 | `src/crypto_robot/lab/`（`rebalance_variants.py` 是事先訂定的組合與標準，看過結果後不得修改） |
 
 改再平衡參數會讓模擬帳戶前後不一致：先問使用者要「接著用舊帳戶」還是「重開帳戶（備份 `state/paper_main.db` 後刪除）」。

@@ -1,4 +1,4 @@
-"""第二十一輪 gbm 每週版的前瞻模擬帳戶（DESIGN.md 6.16，2026-11-06 營運者同意）。不用金鑰、不下單、不碰真錢。
+"""多幣排序的前瞻模擬帳戶，目前跑 blend（DESIGN.md 6.18；tick 規則在 6.16）。不用金鑰、不下單、不碰真錢。
 
 tick 是純函式：帳戶＋報價＋目標 → 模擬成交與事件。連網在 scripts/futures_paper.py。金額一律 Decimal。
 
@@ -280,9 +280,9 @@ def summary(rows: list[tuple[int, Decimal]], ref_rows: list[tuple[int, Decimal]]
 
 def text(s: dict) -> str:
     if not s['trades']:
-        return 'gbm 前瞻模擬：還沒有成交（第一週是 2026-11-09）。'
+        return 'blend 前瞻模擬：還沒有成交（第一週是 2026-11-09）。'
     half = '—' if s['half_spread'] is None else f"{s['half_spread'] * 10000:.1f} bp"
-    lines = [f"gbm 前瞻模擬（只模擬，不下單）：第 {s['weeks']} 週，權益 {s['equity']:.2f} USDT（起始 300，{s['ret']:+.2%}），最大回撤 {s['dd']:.2%}。",
+    lines = [f"blend 前瞻模擬（只模擬，不下單）：第 {s['weeks']} 週，權益 {s['equity']:.2f} USDT（起始 300，{s['ret']:+.2%}），最大回撤 {s['dd']:.2%}。",
              f"對照（沒有緊急停損與帳戶線）：{s['ref_equity']:.2f} USDT。",
              f"成交 {s['trades']} 筆、手續費 {s['fees']:.2f} USDT、實際半價差平均 {half}（研究假設 5 bp）；緊急停損 {s['stops']} 次、略過 {s['skips']} 筆；持有 {s['positions']} 個部位。"]
     if s['ended']:

@@ -1,4 +1,4 @@
-"""gbm 前瞻模擬的訓練與預測（DESIGN.md 6.16）。用獨立環境執行，模型參數同第二十一輪（scripts/xsec_train.py）：
+"""blend 前瞻模擬的訓練與預測（DESIGN.md 6.18）：gbm 與 ridge。用獨立環境執行，模型參數同第二十一輪（scripts/xsec_train.py）：
 
     ..\\_vendor\\ml_venv\\Scripts\\python.exe -I scripts/xsec_forward_train.py <週開始毫秒>
     ..\\_vendor\\ml_venv\\Scripts\\python.exe -I scripts/xsec_forward_train.py selfcheck
@@ -82,6 +82,11 @@ def main() -> None:
     out = STATE / 'preds' / f'{t}.json'
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({syms[i]: float(p) for i, p in zip(test, pred)}), encoding='utf-8')
+    mask = train_mask(ts, y, first_of_month(t))
+    ridge = base.ridge(x[mask], y[mask], x[test])          # 每月第一個週一的訓練範圍，和第二十一輪相同；很快，不存模型
+    out = STATE / 'preds_ridge' / f'{t}.json'
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps({syms[i]: float(p) for i, p in zip(test, ridge)}), encoding='utf-8')
 
 
 if __name__ == '__main__':

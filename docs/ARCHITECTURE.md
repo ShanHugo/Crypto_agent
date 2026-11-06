@@ -19,7 +19,7 @@
 | 想改規則參數、資金、排程時間、通知內容 | `CLAUDE.md` 的「要改什麼，改哪裡」 | 6 |
 | 操作台分頁壞掉 | `scripts/console_data.py`（資料；前瞻紀錄是 `forecast_data()`）；Cashflow_orchestrator `src/console/app.py` 的 `/api/crypto`、`src/console/templates/console.html` 的 `loadCrypto`（四個子分頁：總覽、前瞻紀錄、健康與排程、紀錄） | 2、6 |
 | MAX API 回應改了 | `exchange/max/public.py`；端點查核在 DESIGN.md 第 1 節 | 2 |
-| gbm 前瞻模擬沒心跳、沒目標、數字怪 | `logs\futures_paper.log`、`logs\xsec_forward.log`、排程 `futures_paper`／`xsec_forward`、`state\futures\heartbeat.json`、`futures_agent/paper.py` | 9 |
+| blend 前瞻模擬沒心跳、沒目標、數字怪 | `logs\futures_paper.log`、`logs\xsec_forward.log`、排程 `futures_paper`／`xsec_forward`、`state\futures\heartbeat.json`、`futures_agent/paper.py` | 9 |
 | 新研究 | `/research-round` skill；研究結果在 DESIGN.md 6.3 | — |
 | 主管自動暫停了虛擬貨幣、Discord 收到診斷報告 | `../Cashflow_orchestrator` 的 `scripts/supervise.py --status`、`reports/diagnosis/`；恢復＝營運者刪暫停檔 | 1、5 |
 
@@ -91,7 +91,7 @@ flowchart LR
     WK --> KS
     WK --> WR[(reports/weekly_*.md)]
     WR --> CD
-    XF[xsec_forward 08:05<br/>每週目標・只用公開資料] --> FP[futures_paper 常駐<br/>gbm 前瞻模擬・不下單]
+    XF[xsec_forward 08:05<br/>每週目標・只用公開資料] --> FP[futures_paper 常駐<br/>blend 前瞻模擬・不下單]
     FP --> FDB[(state/futures/futures.db<br/>＋heartbeat.json)]
     FDB --> CD & WK
     DB & SDB & LDB & BAL --> RPT
@@ -135,8 +135,8 @@ flowchart LR
 | 01:35、02:35…07:35 | `paper_rebalance` | 主模擬 → 影子 → 真單 → 讀真實餘額（下圖）；每一步同一天只做一次，已完成的在重試時略過 | 不推送 |
 | 08:30 | `paper_report` | 推送真單、真實餘額、Kronos 預測（模擬、影子帳戶的結果只寫進 `logs\paper_report.log`，2026-11-02 起不推送）；**每週一**再推一則每週事實檢討；最後備份 | Discord |
 | 00:10、03:10…21:10 | 主管 `\cashflow_orchestrator\`（另一個 repo） | 收集健康檢查；真錢 🔴 建立暫停檔，不是已知狀況的 🔴 叫醒 Claude 唯讀診斷 | 真錢或不是已知狀況的新 🔴 才推；已知 🔴 超過 12 小時沒解決再提醒一次 |
-| 08:05（每天，週一才有事做） | `xsec_forward` | 補 Binance 日 K 與資金費率 → 選前 50 大 → `gbm` → 寫這週的目標（DESIGN 6.16）；這週寫過就直接結束，失敗每小時重試 6 次 | 不推送 |
-| 開機就跑 | `futures_paper` | gbm 前瞻模擬常駐程序：每分鐘讀公開報價，模擬成交；不用金鑰、不下單 | 不推送，🔴 由主管處理 |
+| 08:05（每天，週一才有事做） | `xsec_forward` | 補 Binance 日 K 與資金費率 → 選前 50 大 → `gbm`、`ridge`、動能排名平均 → 寫這週的目標（DESIGN 6.18）；這週寫過就直接結束，失敗每小時重試 6 次 | 不推送 |
+| 開機就跑 | `futures_paper` | blend 前瞻模擬常駐程序：每分鐘讀公開報價，模擬成交；不用金鑰、不下單 | 不推送，🔴 由主管處理 |
 | 隨時 | — | 操作台「虛擬貨幣」分頁（子分頁：總覽、前瞻紀錄、健康與排程、紀錄）：每分鐘自動刷新畫面；「重新讀取真實餘額」按鈕只查詢；前瞻紀錄只讀紀錄檔與本機 K 線，不連網 | 不推送 |
 
 **01:35 一次執行的順序**（`scripts/paper_rebalance.py` 的 `run()`；順序有意義：讀餘額要在真單之後，快照才是交易後的狀態）
@@ -179,7 +179,7 @@ flowchart TD
 | 每週事實檢討（`paper_report` 每週一，備份之前） | `paper_rebalance.py --report` → `scripts/weekly_review.py`（也可手動 `--no-send`／`--date`） | `src/crypto_robot/weekly.py`（純函式） | `state/live/live.db`、`state/paper_main.db` | `reports/weekly_YYYYMMDD.md`、Discord | 只列數字、不給建議；失敗不影響備份 | 最近一個週一（2026-11-02 起）有產生 |
 | 幣安資金費率做多前瞻紀錄（每週檢討的最後一段，2026-11-02 起） | `weekly_review.py` 先跑 `fetch_binance.py --futures` 再補記（`--no-send` 不抓不寫） | `src/crypto_robot/forecast/funding_long.py`（規則借用 `lab/futures.py`） | Binance 公開 API（不需要金鑰） | `state/forecast/funding_long.jsonl`、週報最後一段 | 只記錄不下單；失敗只在週報印一行，不影響週報與備份 | 週報最後一段有筆數，沒有「失敗」字樣 |
 | Kronos＋人工判斷多空前瞻紀錄（2026-11-03 起） | `run_scheduled.cmd kronos_forecast` → `kronos_forecast.py`；營運者手動 `judge.py long\|short\|flat` | `forecast/kronos_ls.py`（純函式）、`kronos_model.py`（`../_vendor/kronos_venv`，Kronos commit 67b630e） | Binance 公開 API、`data/bars.db` | `state/forecast/kronos_ls.jsonl`、`kronos_judge.jsonl`、`logs\kronos_forecast.log`；08:30 報告一行、週報一段 | 只記錄不下單；已預測過、08:00 後就略過；判斷一天一次、不能改 | 08:30 報告沒有「今天 00:00 沒有預測」；`health.py` 的 `check_kronos`：08:00 後看今天有沒有預測（漏 1～2 天 🟡、連續 3 天以上 🔴；主管當已知狀況，不會自動暫停） |
-| gbm 前瞻模擬（2026-11-09 起，不碰真錢） | 排程 `futures_paper`（開機啟動）、`xsec_forward`（08:05） | `futures_agent/paper.py`、`lab/xsec.py`、`xsec_forward_train.py`（`_vendor/ml_venv`） | Binance 公開 API、`data/xsec/` | `state/futures/`、`data/xsec/` | 連線失敗下一分鐘重試；關機期間開機後補換倉與資金費率，不補算成交 | `check_futures_paper`：心跳超過 2 小時 🔴、程式錯誤 🔴、這週沒目標 🟡／🔴、模擬結束或暫停 🟡 |
+| blend 前瞻模擬（2026-11-09 起，不碰真錢） | 排程 `futures_paper`（開機啟動）、`xsec_forward`（08:05） | `futures_agent/paper.py`、`lab/xsec.py`、`lab/xsec_blend.py`、`xsec_forward_train.py`（`_vendor/ml_venv`） | Binance 公開 API、`data/xsec/` | `state/futures/`、`data/xsec/` | 連線失敗下一分鐘重試；關機期間開機後補換倉與資金費率，不補算成交 | `check_futures_paper`：心跳超過 2 小時 🔴、程式錯誤 🔴、這週沒目標 🟡／🔴、模擬結束或暫停 🟡 |
 | 系統與安全（不是排程） | 操作台開分頁時 | `health.py` 的 `check_system` | git、logs、考卷檔、K 線快取 | — | — | `.env` 沒進 git、專案資料夾沒有金鑰檔、紀錄檔沒有 webhook；考卷期與 K 線快取只顯示資訊 |
 
 ---
@@ -261,8 +261,8 @@ flowchart TD
 | `state/research/holdout.json` | 考卷期結果（只考一次） | **不能** |
 | `state/forecast/funding_long.jsonl` | 幣安資金費率做多的前瞻紀錄（2026-11-02 起，每週一補記，只新增；DESIGN 6.7） | 能從幣安公開資料重算，但紀錄本身是前瞻證據，不要刪 |
 | `state/forecast/kronos_ls.jsonl`、`kronos_judge.jsonl` | Kronos 每天 00:00 的多空預測、營運者的判斷（2026-11-03 起，只新增；DESIGN 6.7） | 判斷無法重建，紀錄是前瞻證據，不要刪；備份會帶到 |
-| `state/futures/futures.db` | gbm 前瞻模擬的帳戶（`main`，對照 `reference`）、成交、權益、事件 | **不能**（前瞻紀錄） |
-| `state/futures/targets.json`、`targets_history.jsonl`、`models/`、`preds/`、`heartbeat.json` | 每週目標與選幣池（歷史要留著算第 30 週的隨機對照）、每月模型、預測、心跳 | 歷史**不能**；其他能重建 |
+| `state/futures/futures.db` | blend 前瞻模擬的帳戶（`main`，對照 `reference`）、成交、權益、事件 | **不能**（前瞻紀錄） |
+| `state/futures/targets.json`、`targets_history.jsonl`、`models/`、`preds/`、`preds_ridge/`、`heartbeat.json` | 每週目標與選幣池（歷史要留著算第 30 週的隨機對照）、每月模型、預測、心跳 | 歷史**不能**；其他能重建 |
 | `state/futures/paper.paused` | 有這個檔案就暫停模擬；只有營運者手動建立，不影響真單 | 刪掉就恢復 |
 | `data/xsec/` | 多幣日 K、資金費率（`coins/`）、`forward_panel.csv`；第二十一輪的 `panel_mon.csv`、`panel_thu.csv` | 能（`fetch_xsec.py`、`xsec_forward.py`） |
 | `state/paper_rebalance.paused` | 有這個檔案就暫停；主管（`../Cashflow_orchestrator`）遇到真單訂單 unknown／rejected、送單沒跑完會自動建立 | 刪掉＝恢復（由營運者決定） |
@@ -287,23 +287,25 @@ flowchart TD
 - 自動交易：2026-11-03 起營運者允許 24 小時；現貨程式目前仍只在台北時間 01:30～08:00 動作。
 - 研究：先訂標準再看結果；ETH 研究期 2021–2023 已看過六次以上、考卷期已在第三輪用掉（之後跑 2024 起的資料只當參考）；山寨幣與 BTC 2024-07 起的考卷期還沒用過。
 - 主管（`../Cashflow_orchestrator`）唯一會自己做的動作是建立暫停檔；恢復由營運者決定。
-- gbm 前瞻模擬（第 9 節）沒有金鑰、沒有下單 API，只讀 Binance 公開資料；模擬的 🔴 不會暫停真單。
+- blend 前瞻模擬（第 9 節）沒有金鑰、沒有下單 API，只讀 Binance 公開資料；模擬的 🔴 不會暫停真單。
 
 ---
 
 ## 9. 幣安合約 24 小時 Agent（規劃中）
 
-最終目的（DESIGN 6.6，2026-11-03）。**常駐骨架 `agent.py` 還沒用；`gbm` 前瞻模擬（下一段）已在跑，不下單。**骨架：`src/crypto_robot/futures_agent/agent.py` 的 `tick()`（純函式，測試 `tests/test_futures_agent.py`），
+最終目的（DESIGN 6.6，2026-11-03）。**常駐骨架 `agent.py` 還沒用；`blend` 前瞻模擬（下一段）已在跑，不下單。**骨架：`src/crypto_robot/futures_agent/agent.py` 的 `tick()`（純函式，測試 `tests/test_futures_agent.py`），
 策略固定 `NoStrategy`（永遠不持倉）；部位大小已接上第十七輪通過的 EWMA 波動預測（`ewma_vol`、`leverage`），但第二十輪顯示只做多時這樣調沒有比一直持有好，目前只算風險上限（DESIGN 6.3）；沒有連 Binance 私有 API、沒有下單、沒有轉帳的程式。虛線框是還沒寫的部分，照關卡解鎖。
 
-**gbm 前瞻模擬**（DESIGN 6.16，2026-11-06 營運者破例同意；`gbm` 研究期與考卷都沒過，第 3 關不算過）：
+**blend 前瞻模擬**（DESIGN 6.18，tick 規則在 6.16；2026-11-06 營運者破例同意，`blend` 研究期沒過，第 3 關不算過；`gbm` 單獨的模擬已移除，`gbm` 模型還是 `blend` 的成員）：
 
 ```mermaid
 flowchart LR
   API[Binance 公開資料] --> W[xsec_forward 每天 08:05<br/>這週寫過就結束]
   W --> CSV[data/xsec/forward_panel.csv]
-  CSV --> T[xsec_forward_train<br/>ml_venv・每月第一週重訓 gbm]
-  T --> TGT[(state/futures/targets.json)]
+  CSV --> T[xsec_forward_train<br/>ml_venv・每月第一週重訓 gbm・ridge]
+  T --> BL[lab/xsec_blend.py<br/>gbm・ridge・動能排名平均]
+  CSV --> BL
+  BL --> TGT[(state/futures/targets.json)]
   TGT --> TICK[futures_paper 每分鐘 tick<br/>paper.py・純函式]
   API --> TICK
   TICK --> DB[(state/futures/futures.db)]

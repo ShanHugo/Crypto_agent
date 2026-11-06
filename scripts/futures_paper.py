@@ -1,4 +1,4 @@
-"""gbm 前瞻模擬的常駐程序（DESIGN.md 6.16）：每分鐘讀公開報價，模擬成交。不用金鑰、不下單。
+"""blend 前瞻模擬的常駐程序（DESIGN.md 6.18；tick 規則在 6.16）：每分鐘讀公開報價，模擬成交。不用金鑰、不下單。
 
     .venv\\Scripts\\python.exe scripts/futures_paper.py                 # 常駐（排程開機啟動）
     .venv\\Scripts\\python.exe scripts/futures_paper.py --once          # 跑一輪就結束
