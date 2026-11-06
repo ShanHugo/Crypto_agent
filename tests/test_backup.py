@@ -1,7 +1,11 @@
+import importlib.util
 import json
 import sqlite3
 import zipfile
 from datetime import datetime
+from pathlib import Path
+
+import pytest
 
 from crypto_robot import backup
 from crypto_robot import health as hc
@@ -67,3 +71,29 @@ def test_check_backup_levels():
     assert hc.check_backup(datetime(2026, 11, 2), ok, True)[0].level == 'red'
     assert hc.check_backup(NOW, None, True)[0].level == 'yellow'
     assert hc.check_backup(NOW, None, False)[0].level == 'yellow'
+
+
+def test_backup_works_while_resident_process_holds_its_lock(tmp_path):
+    msvcrt = pytest.importorskip('msvcrt')
+    root = tmp_path / 'proj'
+    fut = root / 'state' / 'futures'
+    fut.mkdir(parents=True)
+    (fut / 'heartbeat.json').write_text('{}', encoding='utf-8')
+    (fut / 'heartbeat.tmp').write_text('{', encoding='utf-8')
+    with (fut / 'paper.lock').open('w') as lock:
+        msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+        z = backup.make_zip(root, tmp_path / 'dest', 'x')
+    with zipfile.ZipFile(z) as f:
+        assert f.namelist() == ['state/futures/heartbeat.json']
+
+
+def test_heartbeat_write_survives_a_reader(tmp_path):
+    spec = importlib.util.spec_from_file_location('futures_paper', Path(__file__).resolve().parents[1] / 'scripts' / 'futures_paper.py')
+    fp = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fp)
+    path = tmp_path / 'heartbeat.json'
+    fp.write_json(path, {'n': 1})
+    with path.open('rb'):                 # Windows：別人開著時 os.replace 會失敗，不能讓常駐程序結束
+        fp.write_json(path, {'n': 2})
+    fp.write_json(path, {'n': 3})
+    assert json.loads(path.read_text(encoding='utf-8')) == {'n': 3}

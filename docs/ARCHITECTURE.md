@@ -272,9 +272,9 @@ flowchart TD
 | `reports/weekly_*.md` | 每週事實檢討 | 能（`weekly_review.py --date` 重算） |
 | `.env` | Discord webhook、MAX 金鑰、真單開關與上限、`BACKUP_DIRS` | 自己保管（等同密碼） |
 
-`state/`、`data/`、`logs/`、`reports/`、`.env` 都不進 git。**備份**：每天 08:30 報告推送後，把 `state/` 與 `reports/` 壓縮到 `.env` 的 `BACKUP_DIRS`（保留 40 份，不含 `.env`）。
+`state/`、`data/`、`logs/`、`reports/`、`.env` 都不進 git。**備份**：每天 08:30 報告推送後，把 `state/` 與 `reports/` 壓縮到 `.env` 的 `BACKUP_DIRS`（保留 40 份，不含 `.env`、`*.lock`、`*.tmp`；`futures_paper` 常駐執行中也能備份，資料庫用 SQLite 快照）。
 雲端硬碟電腦版要登入 Windows 才會掛上磁碟機；沒登入時備份會失敗、健康檢查亮 🔴，登入後執行 `scripts\backup.py` 補一次。
-**還原**：停用排程 → 把最新的壓縮檔解開到專案資料夾（覆蓋 `state/`、`reports/`）→ `.env` 自己另外保管 → `paper_rebalance.py --status`、`live_trade.py --status` 確認 → 恢復排程。真單以 MAX 實際餘額為準。
+**還原**：停用排程 → 重新開機，讓 `futures_paper` 真的結束（`Stop-ScheduledTask` 和操作台的停止按鈕只停外層 cmd，Python 還會繼續跑，而且一般權限結束不了，2026-11-06 實測）→ 把最新的壓縮檔解開到專案資料夾（覆蓋 `state/`、`reports/`）→ `.env` 自己另外保管 → `paper_rebalance.py --status`、`live_trade.py --status` 確認 → 恢復排程，再手動啟動 `futures_paper`。真單以 MAX 實際餘額為準。
 
 ---
 

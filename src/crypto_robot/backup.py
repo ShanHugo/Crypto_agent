@@ -1,6 +1,6 @@
 """備份無法重建的資料：state/（模擬帳戶、影子帳戶、真單紀錄、真實帳戶讀取紀錄、考卷結果）與 reports/。
 
-不備份：.env（金鑰、webhook 等同密碼）、logs/、data/（K 線快取，可重新下載）。
+不備份：.env（金鑰、webhook 等同密碼）、logs/、data/（K 線快取，可重新下載）、*.lock（常駐程序鎖著，讀了會失敗）、*.tmp（寫到一半的暫存檔）。
 SQLite 檔用 SQLite 自己的 backup API 先做一致的快照再壓縮，避免剛好有程式在寫入時備到半個檔。
 目的地：.env 的 BACKUP_DIRS（多個用 ; 分隔）；每個目的地保留最近 KEEP 份；寫完重新開檔驗證、確認關鍵檔都在。
 結果記在 state/backup/last.json，健康檢查會看。
@@ -19,6 +19,7 @@ INCLUDE = ['state', 'reports']
 KEY_FILES = ['state/paper_main.db', 'state/live/live.db', 'state/research/holdout.json']   # 存在就一定要在備份裡
 KEEP = 40
 PREFIX = 'crypto_robot_'
+SKIP_SUFFIXES = ('-wal', '-shm', '-journal', '.lock', '.tmp')
 STATUS = Path('state') / 'backup' / 'last.json'
 
 
@@ -34,7 +35,7 @@ def files_to_backup(root: Path) -> list[Path]:
         if p.is_file():
             out.append(p)
         elif p.is_dir():
-            out += [f for f in p.rglob('*') if f.is_file() and not f.name.endswith(('-wal', '-shm', '-journal'))
+            out += [f for f in p.rglob('*') if f.is_file() and not f.name.endswith(SKIP_SUFFIXES)
                     and f.relative_to(root).as_posix() != STATUS.as_posix()]
     return sorted(out)
 

@@ -81,7 +81,10 @@ def read_target(path: Path) -> paper.Target | None:
 def write_json(path: Path, data: dict) -> None:
     tmp = path.with_suffix('.tmp')
     tmp.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
-    os.replace(tmp, path)
+    try:
+        os.replace(tmp, path)
+    except PermissionError:      # 有人剛好在讀（備份、操作台）：這次不更新，下一分鐘再寫
+        pass
 
 
 def one_round(state: Path, ledger: paper.Ledger, cache: dict, now: int) -> dict:
