@@ -29,6 +29,7 @@ from dotenv import load_dotenv  # noqa: E402
 from crypto_robot import weekly  # noqa: E402
 from crypto_robot.core.timeutil import TAIPEI  # noqa: E402
 from crypto_robot.forecast import funding_long, kronos_ls  # noqa: E402
+from crypto_robot.futures_agent import paper  # noqa: E402
 from crypto_robot.lab import futures  # noqa: E402
 from crypto_robot.lab.hourly import Series  # noqa: E402
 from crypto_robot.store.bars import BarStore  # noqa: E402
@@ -102,8 +103,23 @@ def kronos_section() -> str:
         return f'Kronos＋人工判斷前瞻紀錄失敗：{type(e).__name__}: {e}'
 
 
+def futures_section() -> str:
+    """gbm 前瞻模擬（DESIGN 6.16，只模擬）。失敗只回一行。"""
+    path = ROOT / 'state' / 'futures' / 'futures.db'
+    try:
+        if not path.exists():
+            return paper.text(paper.summary([], [], [], [], paper.Account('main')))
+        led = paper.Ledger(path, readonly=True)
+        try:
+            return paper.text(paper.summary(led.equity_rows('main'), led.equity_rows('reference'), led.trades('main'), led.events('main'), led.load('main')))
+        finally:
+            led.close()
+    except Exception as e:   # noqa: BLE001
+        return f'gbm 前瞻模擬失敗：{type(e).__name__}: {e}'
+
+
 async def run(day: date, no_send: bool) -> int:
-    text = weekly.text(build(day)) + '\n\n' + funding_section(update=not no_send) + '\n\n' + kronos_section()
+    text = weekly.text(build(day)) + '\n\n' + funding_section(update=not no_send) + '\n\n' + kronos_section() + '\n\n' + futures_section()
     print(text)
     if no_send:
         return 0

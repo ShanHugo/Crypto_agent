@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 LEVELS = {'ok': 0, 'yellow': 1, 'red': 2}
 PAPER_AT = (1, 40)      # 01:35 排程，留 5 分鐘（之後每小時重試到 07:35）
@@ -164,6 +164,43 @@ def check_kronos(now: datetime, days: set[date]) -> list[Check]:
         miss += 1
     return [Check('Kronos 預測', 'red' if miss >= 3 else 'yellow', f'{day} 00:00 沒有預測（連續 {miss} 天沒有）',
                   '看 logs/kronos_forecast.log 與排程 kronos_forecast；只記錄，不影響交易')]
+
+
+FUTURES_SINCE = date(2026, 11, 9)     # gbm 前瞻模擬第一週（週一）
+
+
+def check_futures_paper(now: datetime, beat: dict | None, week_ms: int | None) -> list[Check]:
+    """gbm 前瞻模擬（DESIGN 6.16，不碰真錢）。now 是台北時間；beat：state/futures/heartbeat.json；week_ms：targets.json 的週。"""
+    if now.date() < FUTURES_SINCE:
+        return [Check('前瞻模擬', 'ok', f'第一週是 {FUTURES_SINCE}')]
+    out = []
+    keep = '只是模擬，不影響真單'
+    if beat is None:
+        return [Check('常駐程序', 'red', '沒有心跳檔', f'看排程 futures_paper 與 logs/futures_paper.log；{keep}')]
+    age = (now.replace(tzinfo=timezone(timedelta(hours=8))).timestamp() * 1000 - beat['time']) / 3_600_000
+    if age > 2:
+        out.append(Check('常駐程序', 'red', f'{age:.0f} 小時沒有心跳', f'電腦可能關機或睡眠；看排程 futures_paper 與 logs/futures_paper.log；{keep}'))
+    elif beat.get('kind') == 'bug':
+        out.append(Check('常駐程序', 'red', f"程式錯誤：{beat.get('error')}", '交給開發者診斷'))
+    elif beat.get('error'):
+        quote_age = (beat['time'] - beat['last_quote_ms']) / 3_600_000 if beat.get('last_quote_ms') else None
+        level = 'red' if quote_age is None or quote_age > 2 else 'yellow'
+        out.append(Check('報價', level, str(beat['error']), f'連線問題會自己重試；看 logs/futures_paper.log；{keep}'))
+    else:
+        out.append(Check('常駐程序', 'ok', f"權益 {beat.get('equity')} USDT，持有 {beat.get('positions')} 個部位"))
+    if beat.get('ended'):
+        out.append(Check('模擬狀態', 'yellow', '權益跌到起始的 70%，本次模擬已結束', '等營運者決定；不影響真單'))
+    if beat.get('paused'):
+        out.append(Check('模擬狀態', 'yellow', '暫停中（state/futures/paper.paused）', '刪掉暫停檔就恢復；不影響真單'))
+    monday = now.date() - timedelta(days=now.weekday())
+    want = int(datetime(monday.year, monday.month, monday.day, tzinfo=timezone.utc).timestamp() * 1000)
+    if (week_ms or 0) >= want:
+        out.append(Check('每週目標', 'ok', f'{monday} 這週的目標已寫入'))
+    elif now.weekday() > 0 or now.hour >= 9:
+        out.append(Check('每週目標', 'red' if now.weekday() >= 1 else 'yellow', f'{monday} 這週還沒有目標', f'看排程 xsec_forward 與 logs/xsec_forward.log；{keep}'))
+    else:
+        out.append(Check('每週目標', 'ok', '週一 08:05 才會寫入'))
+    return out
 
 
 def check_live(now: datetime, records: list[dict], keys_set: bool, ref_ip_set: bool) -> list[Check]:

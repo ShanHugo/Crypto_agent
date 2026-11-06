@@ -37,7 +37,9 @@ LIVE_DB = ROOT / 'state' / 'live' / 'live.db'
 BACKUP_STATUS = ROOT / 'state' / 'backup' / 'last.json'
 REPORTS = ROOT / 'reports'
 LOGS = {'paper_rebalance': ROOT / 'logs' / 'paper_rebalance.log', 'paper_report': ROOT / 'logs' / 'paper_report.log',
-        'kronos_forecast': ROOT / 'logs' / 'kronos_forecast.log'}
+        'kronos_forecast': ROOT / 'logs' / 'kronos_forecast.log', 'xsec_forward': ROOT / 'logs' / 'xsec_forward.log',
+        'futures_paper': ROOT / 'logs' / 'futures_paper.log'}
+FUTURES = ROOT / 'state' / 'futures'
 
 
 def num(v):
@@ -154,6 +156,24 @@ def forecast_data(now: datetime) -> dict:
     }
 
 
+def futures_data() -> dict:
+    """gbm 前瞻模擬（DESIGN 6.16）：只讀 state/futures，檔案不存在也不會建立。"""
+    from crypto_robot.futures_agent import paper
+    read = lambda p: json.loads(p.read_text(encoding='utf-8')) if p.exists() else None     # noqa: E731
+    beat, target = read(FUTURES / 'heartbeat.json'), read(FUTURES / 'targets.json')
+    out = {'beat': beat, 'target': target, 'text': paper.text(paper.summary([], [], [], [], paper.Account('main'))), 'recent': []}
+    if (FUTURES / 'futures.db').exists():
+        led = paper.Ledger(FUTURES / 'futures.db', readonly=True)
+        try:
+            trades = led.trades('main')
+            out['text'] = paper.text(paper.summary(led.equity_rows('main'), led.equity_rows('reference'), trades, led.events('main'), led.load('main')))
+            out['recent'] = [{'at': datetime.fromtimestamp(t['ts'] / 1000, TAIPEI).strftime('%Y-%m-%d %H:%M'), 'sym': t['sym'], 'qty': num(t['qty']),
+                              'price': num(t['price']), 'fee': num(t['fee']), 'reason': t['reason']} for t in trades[-30:]]
+        finally:
+            led.close()
+    return out
+
+
 def kronos_days() -> set:
     """kronos_ls.jsonl 裡有預測的台北日期（給健康檢查）。"""
     from crypto_robot.forecast import kronos_ls as kl
@@ -187,6 +207,7 @@ def main() -> None:
         finally:
             ls.close()
     start = datetime.fromisoformat(main_acc['started_at']).date() if main_acc else None
+    futures = futures_data()
     runs = hc.parse_runs(logs['paper_rebalance'])
     shadow_agent = (hc.agent('shadow', '影子帳戶：兩資產', hc.check_paper(now, snaps(shadow), runs, PAUSE_FILE.exists()))
                     if shadow else
@@ -204,6 +225,7 @@ def main() -> None:
         hc.agent('live_trade', '真單', hc.check_live_trade(now, live_on, run_want, orders_want)),
         hc.agent('live', '真實帳戶（唯讀）', hc.check_live(now, live_records, keys_set, ref is not None)),
         hc.agent('kronos_forecast', 'Kronos 預測（00:00，只記錄）', hc.check_kronos(now, kronos_days())),
+        hc.agent('futures_paper', 'gbm 前瞻模擬（只模擬）', hc.check_futures_paper(now, futures['beat'], (futures['target'] or {}).get('week'))),
     ]
     out = {
         'generated_at': now.isoformat(timespec='seconds'),
@@ -218,6 +240,7 @@ def main() -> None:
                                                  ('variant', 'period', 'passed', 'rebalances', 'stats', 'static', 'hodl', 'halves', 'tested_at')},
         'weekly': weekly_latest(),
         'forecast': forecast_data(now),
+        'futures': futures,
         'health': {'agents': agents, 'overall': hc.overall(agents)},
         'logs': {k: [hc.WEBHOOK.sub('<webhook>/', ln) for ln in v[-80:]] for k, v in logs.items()},
     }

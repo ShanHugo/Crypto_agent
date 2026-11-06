@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 
 from crypto_robot import health as hc
 
@@ -112,3 +112,54 @@ def test_check_kronos():
     assert levels(hc.check_kronos(datetime(2026, 11, 3, 9, 0), set())) == {'Kronos 預測': 'yellow'}
     assert levels(hc.check_kronos(datetime(2026, 11, 5, 9, 0), {d(2026, 11, 3)})) == {'Kronos 預測': 'yellow'}
     assert levels(hc.check_kronos(datetime(2026, 11, 6, 9, 0), {d(2026, 11, 3)})) == {'Kronos 預測': 'red'}
+
+
+def _beat(now, **kw):
+    ms = int(now.replace(tzinfo=timezone(timedelta(hours=8))).timestamp() * 1000)
+    return {'time': ms, 'last_quote_ms': ms, 'error': None, 'equity': '300', 'positions': 20} | kw
+
+
+def _monday(y=2026, m=11, d=9):
+    return int(datetime(y, m, d, tzinfo=timezone.utc).timestamp() * 1000)
+
+
+def test_futures_paper_before_first_week_is_ok():
+    assert [c.level for c in hc.check_futures_paper(datetime(2026, 11, 8, 12), None, None)] == ['ok']
+
+
+def test_futures_paper_no_heartbeat_is_red_with_known_hint():
+    c = hc.check_futures_paper(datetime(2026, 11, 9, 12), None, None)[0]
+    assert c.level == 'red' and '不影響真單' in c.hint
+
+
+def test_futures_paper_stale_heartbeat_red_and_bug_goes_to_developer():
+    now = datetime(2026, 11, 10, 12)
+    stale = _beat(now - timedelta(hours=3))
+    assert hc.check_futures_paper(now, stale, _monday())[0].level == 'red'
+    bug = hc.check_futures_paper(now, _beat(now, error='KeyError', kind='bug'), _monday())[0]
+    assert bug.level == 'red' and '開發者' in bug.hint
+
+
+def test_futures_paper_network_error_yellow_then_red_after_2h():
+    now = datetime(2026, 11, 10, 12)
+    ms = _beat(now)['time']
+    assert hc.check_futures_paper(now, _beat(now, error='連線', kind='network', last_quote_ms=ms - 3_600_000), _monday())[0].level == 'yellow'
+    assert hc.check_futures_paper(now, _beat(now, error='連線', kind='network', last_quote_ms=ms - 3 * 3_600_000), _monday())[0].level == 'red'
+
+
+def test_futures_paper_weekly_target():
+    now = datetime(2026, 11, 9, 8, 30)
+    assert hc.check_futures_paper(now, _beat(now), None)[-1].level == 'ok'             # 週一 09:00 前還可以等
+    now = datetime(2026, 11, 9, 10)
+    assert hc.check_futures_paper(now, _beat(now), None)[-1].level == 'yellow'
+    now = datetime(2026, 11, 10, 10)
+    assert hc.check_futures_paper(now, _beat(now), None)[-1].level == 'red'
+    assert hc.check_futures_paper(now, _beat(now), _monday())[-1].level == 'ok'
+
+
+def test_futures_paper_ended_and_paused_are_yellow():
+    now = datetime(2026, 11, 10, 10)
+    levels = {c.name: c.level for c in hc.check_futures_paper(now, _beat(now, ended=True), _monday())}
+    assert levels['模擬狀態'] == 'yellow'
+    levels = {c.name: c.level for c in hc.check_futures_paper(now, _beat(now, paused=True), _monday())}
+    assert levels['模擬狀態'] == 'yellow'
