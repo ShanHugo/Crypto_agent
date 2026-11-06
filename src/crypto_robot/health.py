@@ -203,6 +203,19 @@ def check_futures_paper(now: datetime, beat: dict | None, week_ms: int | None) -
     return out
 
 
+def check_positioning(now: datetime, last: dict | None) -> list[Check]:
+    """多空比與未平倉量的資料收集（DESIGN 6.19）。last：最後一次存到新資料的執行。Binance 只留約 30 天，超過 20 天才 🔴。"""
+    keep = '看排程 positioning 與 logs/positioning.log；只收資料，不影響交易'
+    if last is None:
+        return [Check('資料收集', 'yellow', '還沒有資料', keep)]
+    age = (now.replace(tzinfo=timezone(timedelta(hours=8))).timestamp() * 1000 - last['time']) / 86_400_000
+    if age > 20:
+        return [Check('資料收集', 'red', f'{age:.0f} 天沒有新資料，30 天後會永久缺資料', keep)]
+    if age > 3:
+        return [Check('資料收集', 'yellow', f'{age:.0f} 天沒有新資料，30 天內重抓都補得回來', keep)]
+    return [Check('資料收集', 'ok', f"{age * 24:.0f} 小時前存入 {last['added']} 筆（失敗 {last['failed']} 次，之後會補）")]
+
+
 def check_live(now: datetime, records: list[dict], keys_set: bool, ref_ip_set: bool) -> list[Check]:
     """真實帳戶（唯讀，真單第一階段）：凌晨有讀到餘額、金鑰可用、公開 IP 沒變。records：state/live/balances.jsonl，由舊到新。"""
     if not keys_set:

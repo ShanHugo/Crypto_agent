@@ -38,7 +38,7 @@ BACKUP_STATUS = ROOT / 'state' / 'backup' / 'last.json'
 REPORTS = ROOT / 'reports'
 LOGS = {'paper_rebalance': ROOT / 'logs' / 'paper_rebalance.log', 'paper_report': ROOT / 'logs' / 'paper_report.log',
         'kronos_forecast': ROOT / 'logs' / 'kronos_forecast.log', 'xsec_forward': ROOT / 'logs' / 'xsec_forward.log',
-        'futures_paper': ROOT / 'logs' / 'futures_paper.log'}
+        'futures_paper': ROOT / 'logs' / 'futures_paper.log', 'positioning': ROOT / 'logs' / 'positioning.log'}
 FUTURES = ROOT / 'state' / 'futures'
 
 
@@ -180,6 +180,11 @@ def kronos_days() -> set:
     return {datetime.fromtimestamp(f['ts'] / 1000, TAIPEI).date() for f in kl.read(ROOT / 'state' / 'forecast' / 'kronos_ls.jsonl')}
 
 
+def positioning_last() -> dict | None:
+    from crypto_robot import positioning as pos
+    return pos.last_added(ROOT / 'state' / 'positioning' / 'positioning.db')
+
+
 def snaps(acc: dict | None) -> list[dict]:
     return [{'date': c['date'], 'action': c['action'], 'note': c['note']} for c in acc['curve']] if acc else []
 
@@ -226,6 +231,7 @@ def main() -> None:
         hc.agent('live', '真實帳戶（唯讀）', hc.check_live(now, live_records, keys_set, ref is not None)),
         hc.agent('kronos_forecast', 'Kronos 預測（00:00，只記錄）', hc.check_kronos(now, kronos_days())),
         hc.agent('futures_paper', 'blend 前瞻模擬（只模擬）', hc.check_futures_paper(now, futures['beat'], (futures['target'] or {}).get('week'))),
+        hc.agent('positioning', '多空比資料收集（只存資料）', hc.check_positioning(now, positioning_last())),
     ]
     out = {
         'generated_at': now.isoformat(timespec='seconds'),

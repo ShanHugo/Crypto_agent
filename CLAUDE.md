@@ -10,7 +10,7 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 ## 現況（2026-10-28）
 
 - **主模擬帳戶**（不是真單）：三資產 `rebal3-eth50-cashusdt75-band5`（ETH 50%、USDT 37.5%、台幣 12.5%，任何一項偏離 5 個百分點全部調回），6,000 台幣；2026-10-26 由原本的兩資產帳戶轉換過來（`--migrate`），狀態在 `state/paper_main.db`。舊的 `state/paper_rebalance.db` 只留作紀錄。
-- 排程：01:35 執行 `paper_rebalance`（不推送，失敗每小時重試到 07:35）、00:00 執行 `kronos_forecast`（Kronos 多空預測，只記錄；模型在 `../_vendor/kronos_venv`，真單的 `.venv` 不裝 torch）、08:30 執行 `paper_report`（推送 Discord）。營運者每天用 `scripts/judge.py long|short|flat` 記判斷。
+- 排程：01:35 執行 `paper_rebalance`（不推送，失敗每小時重試到 07:35）、00:00 執行 `kronos_forecast`（Kronos 多空預測，只記錄；模型在 `../_vendor/kronos_venv`，真單的 `.venv` 不裝 torch）、08:15 執行 `positioning`（多空比與未平倉量，只存資料，DESIGN 6.19；2027-11-08 前不拿來訓練或看報酬）、08:30 執行 `paper_report`（推送 Discord）。營運者每天用 `scripts/judge.py long|short|flat` 記判斷。
 - **影子帳戶**（同一個排程、同樣 6,000 元，只記錄）：原本的兩資產 `rebal-eth50-band10`（ETH 50%、台幣 50%），2026-10-27 凌晨重新建倉；狀態在 `state/shadow_rebal2.db`。
 - **第十七輪（2026-11-05，技術面與基本面 Agent，6 組）**：方向 5 組都沒過；**EWMA 波動預測研究期與考卷都通過**（可用來調合約部位大小，不能預測方向），考卷已用掉。
 - **第十八輪（2026-11-06，Kronos 加資金費率、利率等 7 項資訊再訓練）**：研究期原版、再訓練、再訓練＋資訊都沒過（每筆仍虧損），不進考卷；程式已刪除（`git checkout 939e29f`）。
@@ -55,6 +55,7 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 | 真實帳戶（唯讀）、IP 變動 | `src/crypto_robot/live/readonly.py`、`exchange/max/private.py` 的 `MaxPrivateClient`（只有查詢方法；會下單的是 `MaxTradingClient`）、`scripts/live_check.py`（`--accept-ip`）；紀錄在 `state/live/`（含公開 IP，絕不進 git） |
 | 幣安合約 24 小時 Agent（骨架，還不能下單） | `src/crypto_robot/futures_agent/agent.py`（`tick`、`AgentConfig`、`NoStrategy`）；流程圖在 `docs/ARCHITECTURE.md` 第 9 節 |
 | blend 前瞻模擬（不碰真錢） | 模擬帳戶 `src/crypto_robot/futures_agent/paper.py`；常駐程序 `scripts/futures_paper.py`；每週目標 `scripts/xsec_forward.py`、訓練 `scripts/xsec_forward_train.py`、名單 `lab/xsec_blend.py` 的 `blend_picks`；健康檢查 `health.py` 的 `check_futures_paper`；狀態 `state/futures/`；設計 DESIGN 6.18、6.16 |
+| 多空比與未平倉量資料收集 | `src/crypto_robot/positioning.py`、`scripts/fetch_positioning.py`；健康檢查 `health.py` 的 `check_positioning`；資料 `state/positioning/positioning.db`；設計 DESIGN 6.19 |
 | 研究 | `src/crypto_robot/lab/`（`rebalance_variants.py` 是事先訂定的組合與標準，看過結果後不得修改） |
 
 改再平衡參數會讓模擬帳戶前後不一致：先問使用者要「接著用舊帳戶」還是「重開帳戶（備份 `state/paper_main.db` 後刪除）」。
