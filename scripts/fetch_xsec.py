@@ -38,7 +38,7 @@ FUNDING = 'data/futures/um/monthly/fundingRate/{}/'
 def get(url: str) -> bytes:
     for attempt in range(5):
         try:
-            with urllib.request.urlopen(url, timeout=60) as r:
+            with urllib.request.urlopen(urllib.parse.quote(url, safe=':/?=&%'), timeout=60) as r:   # 有中文代號的幣
                 return r.read()
         except OSError:
             if attempt == 4:
