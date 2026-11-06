@@ -1,8 +1,7 @@
 """研究工具：比例再平衡（第三輪，ETH＋台幣）與三資產再平衡（第五輪，ETH＋USDT＋台幣，用 --family rebalance3，沒有考卷）、
 Binance 永續合約（第十四輪，--family futures；先跑 scripts/fetch_binance.py --futures）、
 技術面與基本面研究 Agent（第十七輪，--family ta_fa；再先跑 scripts/fetch_macro.py）、
-多幣排序（第二十一輪，--family xsec：先跑 scripts/fetch_xsec.py，--stage data 產生資料，訓練與預測用 scripts/xsec_train.py）、
-多幣排序每 3 天（第二十二輪，--family xsec3，訓練用 scripts/xsec3_train.py；--stage holdout 是參考段，不判定通過）。
+多幣排序（第二十一輪，--family xsec：先跑 scripts/fetch_xsec.py，--stage data 產生資料，訓練與預測用 scripts/xsec_train.py）。
 
     .venv\\Scripts\\python.exe scripts/research.py --stage dev
     .venv\\Scripts\\python.exe scripts/research.py --stage holdout       # 已考過：只顯示當時的結果
@@ -22,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 
-from crypto_robot.lab import futures, multi_research, periods, rebalance_research, rebalance_variants, ta_fa, xsec, xsec3  # noqa: E402
+from crypto_robot.lab import futures, multi_research, periods, rebalance_research, rebalance_variants, ta_fa, xsec  # noqa: E402
 from crypto_robot.lab.hourly import Series  # noqa: E402
 from crypto_robot.store.bars import BarStore  # noqa: E402
 
@@ -32,8 +31,6 @@ HOLDOUT_TF = ROOT / 'state' / 'research' / 'holdout_ta_fa.json'
 HOLDOUT_XS = ROOT / 'state' / 'research' / 'holdout_xsec.json'
 XS_DEV = ROOT / 'state' / 'research' / 'xsec_dev.json'
 XS_PREDS = ROOT / 'state' / 'research' / 'xsec_preds.jsonl'
-XS3_DEV = ROOT / 'state' / 'research' / 'xsec3_dev.json'
-XS3_PREDS = ROOT / 'state' / 'research' / 'xsec3_preds.jsonl'
 
 
 def git_commit() -> str:
@@ -146,47 +143,17 @@ def run_xsec(args) -> None:
     print(f'已寫入 {out}')
 
 
-def run_xsec3(args) -> None:
-    folder = ROOT / 'data' / 'xsec'
-    coins = xsec.load_coins(folder / 'coins')
-    if not coins:
-        sys.exit('缺資料，先執行 scripts/fetch_xsec.py')
-    if args.stage == 'data':
-        info = {s: xsec3.write_panel(folder / f'panel3_{s}.csv', coins, s) for s in xsec3.SHIFT}
-        print(json.dumps({'coins': len(coins), **info}, ensure_ascii=False, indent=2))
-        return
-    panels = {s: xsec.read_panel(folder / f'panel3_{s}.csv') for s in xsec3.SHIFT}
-    preds = xsec.read_preds(XS3_PREDS)
-    now = datetime.now()
-    if args.stage == 'dev':
-        if XS3_DEV.exists():
-            sys.exit('研究期判定已經寫下，不重算')
-        res = xsec3.run_dev(coins, panels, preds)
-        XS3_DEV.write_text(json.dumps({**res, 'commit': git_commit(), 'at': now.isoformat()}, ensure_ascii=False, indent=2), encoding='utf-8')
-        text = xsec3.dev_report(res, now.strftime('%Y-%m-%d %H:%M'))
-    else:
-        if not XS3_DEV.exists():
-            sys.exit('研究期判定還沒寫下，不算參考段')
-        dev = json.loads(XS3_DEV.read_text(encoding='utf-8'))
-        text = xsec3.reference_report(xsec3.run_reference(coins, panels['s0'], preds), dev, now.strftime('%Y-%m-%d %H:%M'))
-    out = ROOT / 'reports' / f"research_{'dev' if args.stage == 'dev' else 'reference'}_xsec3_{now:%Y%m%d}.md"
-    out.parent.mkdir(exist_ok=True)
-    out.write_text(text, encoding='utf-8')
-    print(text)
-    print(f'已寫入 {out}')
-
-
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
-    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'futures', 'ta_fa', 'xsec', 'xsec3'], default='rebalance')
+    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'futures', 'ta_fa', 'xsec'], default='rebalance')
     ap.add_argument('--stage', choices=['data', 'dev', 'holdout'], required=True)
     ap.add_argument('--variant', help='考卷期要考的規則名稱（見研究期報告）')
     ap.add_argument('--db', default=str(ROOT / 'data' / 'bars.db'))
     args = ap.parse_args()
 
-    if args.stage == 'data' and args.family not in ('xsec', 'xsec3'):
-        sys.exit('--stage data 只有 --family xsec、xsec3 用')
+    if args.stage == 'data' and args.family != 'xsec':
+        sys.exit('--stage data 只有 --family xsec 用')
     if args.family == 'futures':
         run_futures(args)
         return
@@ -195,9 +162,6 @@ def main() -> None:
         return
     if args.family == 'xsec':
         run_xsec(args)
-        return
-    if args.family == 'xsec3':
-        run_xsec3(args)
         return
 
     if args.family == 'rebalance3':
