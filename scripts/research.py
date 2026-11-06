@@ -1,6 +1,7 @@
 """研究工具：比例再平衡（第三輪，ETH＋台幣）與三資產再平衡（第五輪，ETH＋USDT＋台幣，用 --family rebalance3，沒有考卷）、
 Binance 永續合約（第十四輪，--family futures；先跑 scripts/fetch_binance.py --futures）、
-技術面與基本面研究 Agent（第十七輪，--family ta_fa；再先跑 scripts/fetch_macro.py）。
+技術面與基本面研究 Agent（第十七輪，--family ta_fa；再先跑 scripts/fetch_macro.py）、
+波動目標持有（第二十輪，--family vol_target）。
 
     .venv\\Scripts\\python.exe scripts/research.py --stage dev
     .venv\\Scripts\\python.exe scripts/research.py --stage holdout       # 已考過：只顯示當時的結果
@@ -20,13 +21,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 
-from crypto_robot.lab import futures, multi_research, periods, rebalance_research, rebalance_variants, ta_fa  # noqa: E402
+from crypto_robot.lab import futures, multi_research, periods, rebalance_research, rebalance_variants, ta_fa, vol_target  # noqa: E402
 from crypto_robot.lab.hourly import Series  # noqa: E402
 from crypto_robot.store.bars import BarStore  # noqa: E402
 
 HOLDOUT_FILE = ROOT / 'state' / 'research' / 'holdout.json'
 HOLDOUT_FU = ROOT / 'state' / 'research' / 'holdout_futures.json'
 HOLDOUT_TF = ROOT / 'state' / 'research' / 'holdout_ta_fa.json'
+HOLDOUT_VT = ROOT / 'state' / 'research' / 'holdout_vol_target.json'
 
 
 def git_commit() -> str:
@@ -103,10 +105,37 @@ def run_ta_fa(args) -> None:
     print(f'已寫入 {out}')
 
 
+def run_vol_target(args) -> None:
+    if args.stage == 'holdout' and HOLDOUT_VT.exists():
+        print('考卷已經考過，以下是當時的結果（不重算）：')
+        print(HOLDOUT_VT.read_text(encoding='utf-8'))
+        return
+    store = BarStore(args.db)
+    perp, spot = Series.of(store.load(futures.MARKET, 60)), Series.of(store.load('binance_ethusdt', 60))
+    store.close()
+    fund = futures.Funding([(t, float(r)) for t, r in json.loads((ROOT / 'data' / 'funding_ethusdt.json').read_text(encoding='utf-8'))])
+    res = vol_target.run_dev(perp, fund)
+    exam = None
+    if args.stage == 'holdout':
+        if not res['pick']:
+            sys.exit('研究期沒有規則通過，不考')
+        commit = git_commit()
+        if commit.endswith('-dirty'):
+            sys.exit('src/ 有未 commit 的修改；先 commit')
+        exam = {**vol_target.run_exam(res['pick'], perp, fund, spot), 'commit': commit, 'at': datetime.now().isoformat()}
+        HOLDOUT_VT.write_text(json.dumps(exam, ensure_ascii=False, indent=2), encoding='utf-8')
+    text = vol_target.report(res, datetime.now().strftime('%Y-%m-%d %H:%M'), exam)
+    out = ROOT / 'reports' / f'research_{args.stage}_vol_target_{datetime.now():%Y%m%d}.md'
+    out.parent.mkdir(exist_ok=True)
+    out.write_text(text, encoding='utf-8')
+    print(text)
+    print(f'已寫入 {out}')
+
+
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
-    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'futures', 'ta_fa'], default='rebalance')
+    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'futures', 'ta_fa', 'vol_target'], default='rebalance')
     ap.add_argument('--stage', choices=['dev', 'holdout'], required=True)
     ap.add_argument('--variant', help='考卷期要考的規則名稱（見研究期報告）')
     ap.add_argument('--db', default=str(ROOT / 'data' / 'bars.db'))
@@ -117,6 +146,9 @@ def main() -> None:
         return
     if args.family == 'ta_fa':
         run_ta_fa(args)
+        return
+    if args.family == 'vol_target':
+        run_vol_target(args)
         return
 
     if args.family == 'rebalance3':
