@@ -2356,6 +2356,8 @@ flowchart TD
 ### 6.21 開發輔助：一鍵檢查與檢查員（2026-11-08 營運者同意）
 
 > **已實作（2026-11-08）**：`scripts/devcheck.py`（測試 `tests/test_devcheck.py`）、`.claude/agents/checker.md`。
+>
+> **流程改版（2026-11-08 營運者同意）**：實測檢查員一次約 6.1 萬 Haiku token，全部正常時也要付；主對話自己跑 devcheck 只多讀 2 行。改成主對話先跑 devcheck，有 🟡／🔴 要翻日誌時才派檢查員。下面的架構圖已更新。
 
 營運者想讓開發省 token（2026-11-08）。「幫我檢查」每次都要讀測試、排程、健康、日誌、git 的原始輸出，常有幾百行。這段只改開發方式，**不動任何交易、模擬、排程或通知**。
 
@@ -2370,14 +2372,16 @@ flowchart TD
 ```mermaid
 flowchart LR
   OP[營運者：幫我檢查] --> ME[主對話 Claude]
-  ME -- 派工 --> CK[檢查員 checker<br/>Haiku・只讀]
-  CK --> DC[scripts/devcheck.py<br/>不用 AI]
+  ME -- 先自己跑 --> DC[scripts/devcheck.py<br/>不用 AI]
+  DC -- 全部正常：2 行 --> ME
+  DC -- 有 🟡、🔴 --> Q{要翻日誌才看得出原因？}
+  Q -- 否：結果已說清楚 --> ME
+  Q -- 是 --> CK[檢查員 checker<br/>Haiku・只讀]
   DC --> H[scripts/console_data.py<br/>現有健康檢查]
   DC --> T[pytest -q<br/>只留最後一行]
   DC --> S[排程 crypto_robot<br/>上次結果]
   DC --> G[git<br/>未 commit・未 push]
-  DC -- 10～15 行摘要 --> CK
-  CK -- 只有異常時 --> L[logs/ 相關日誌尾端]
+  CK -- 只看異常項目 --> L[logs/ 相關日誌尾端]
   CK -- 最多 8 行結論 --> ME
   ME -- 轉述・需要時自己深入 --> OP
 ```

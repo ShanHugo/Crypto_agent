@@ -1,6 +1,6 @@
 ---
 name: checker
-description: 唯讀檢查員（DESIGN 6.21）。營運者說「幫我檢查」「有沒有正常」「排程有沒有跑」「測試有沒有過」時派它：跑 scripts/devcheck.py，有異常才看相關日誌尾端，回報最多 8 行。不修改任何東西。
+description: 唯讀檢查員（DESIGN 6.21）。主對話跑 scripts/devcheck.py 發現 🟡／🔴、要翻日誌才看得出原因時派它：重跑 devcheck，只看異常項目的日誌尾端，回報最多 8 行。全部正常時不要派。不修改任何東西。
 tools: Bash, Read, Grep, Glob
 model: haiku
 ---

@@ -22,7 +22,7 @@
 | blend 前瞻模擬沒心跳、沒目標、數字怪 | `logs\futures_paper.log`、`logs\xsec_forward.log`、排程 `futures_paper`／`xsec_forward`、`state\futures\heartbeat.json`、`futures_agent/paper.py` | 9 |
 | 多空比資料 | 2026-11-07 起不排程，要研究時手動執行 `scripts/fetch_positioning.py`（API 只有最近 30 天；更早的歷史從公開資料站補，DESIGN 6.19、6.20） |
 | 新研究 | `/research-round` skill；研究結果在 DESIGN.md 6.3 | — |
-| 開發時「幫我檢查」 | 派 `checker` 子代理（`.claude/agents/checker.md`，Haiku，只讀），或自己跑 `scripts/devcheck.py`：健康燈號、測試、排程、git 整理成幾行，全部正常結束碼 0（DESIGN 6.21） | 1 |
+| 開發時「幫我檢查」 | 先跑 `scripts/devcheck.py`：健康燈號、測試、排程、git 整理成幾行，全部正常結束碼 0；有 🟡／🔴 要翻日誌才派 `checker` 子代理（`.claude/agents/checker.md`，Haiku，只讀）（DESIGN 6.21） | 1 |
 | 主管自動暫停了虛擬貨幣、Discord 收到診斷報告 | `../Cashflow_orchestrator` 的 `scripts/supervise.py --status`、`reports/diagnosis/`；恢復＝營運者刪暫停檔 | 1、5 |
 
 改完一律：`pytest -q` → `paper_rebalance.py --dry-run --ignore-window` 或 `--report --no-send` → commit → push（`/ship`）。
@@ -47,7 +47,7 @@
 | 開發者 | Claude（在 Crypto_Robot 資料夾） | 改程式、診斷「不是已知狀況」的錯誤、加 Agent 與健康檢查、維護測試與文件 |
 | Agent | 3 個排程（第 4 節） | 每天自動執行；已知狀況自己處理（同一天不重複交易、差額太小不下單、盤口不足只部分成交） |
 | 監控 | `src/crypto_robot/health.py` | 開操作台分頁時檢查「有沒有達到預期」；凌晨失敗先由 Agent 每小時重試，整個時段都失敗才由 08:30 報告推 🔴 |
-| 檢查員 | `.claude/agents/checker.md`（開發時才用，不排程） | 跑 `scripts/devcheck.py`，有異常才看日誌尾端，回報最多 8 行給開發者；只讀：不改檔、不 commit、不讀 `.env`、不跑交易或推送程式 |
+| 檢查員 | `.claude/agents/checker.md`（開發時才用，不排程；devcheck 有異常、要翻日誌時才派） | 跑 `scripts/devcheck.py`，只看異常項目的日誌尾端，回報最多 8 行給開發者；只讀：不改檔、不 commit、不讀 `.env`、不跑交易或推送程式 |
 | 主管 | `../Cashflow_orchestrator`（另一個 repo，每 3 小時） | 讀 `console_data.py` 的健康檢查：真單訂單 rejected／unknown、送單沒跑完 → 自動建立暫停檔＋推送；不是已知狀況的 🔴 → 叫醒 Claude 唯讀診斷。不改程式、不下單、不恢復 |
 
 **誰處理什麼**
