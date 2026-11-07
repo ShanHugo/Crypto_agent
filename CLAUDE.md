@@ -57,6 +57,7 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 | 幣安合約 24 小時 Agent（骨架，還不能下單） | `src/crypto_robot/futures_agent/agent.py`（`tick`、`AgentConfig`、`NoStrategy`）；流程圖在 `docs/ARCHITECTURE.md` 第 9 節 |
 | blend 前瞻模擬（不碰真錢） | 模擬帳戶 `src/crypto_robot/futures_agent/paper.py`；常駐程序 `scripts/futures_paper.py`；每週目標 `scripts/xsec_forward.py`、訓練 `scripts/xsec_forward_train.py`、名單 `lab/xsec_blend.py` 的 `blend_picks`；健康檢查 `health.py` 的 `check_futures_paper`；狀態 `state/futures/`；設計 DESIGN 6.18、6.16 |
 | 多空比與未平倉量資料收集（2026-11-07 起不排程，手動執行） | `src/crypto_robot/positioning.py`、`scripts/fetch_positioning.py`；健康檢查 `health.py` 的 `check_positioning`（目前沒接）；資料 `state/positioning/positioning.db`；設計 DESIGN 6.19 |
+| 開發用一鍵檢查（不用 AI）、唯讀檢查員子代理 | `scripts/devcheck.py`（健康燈號、測試、排程、git；測試 `tests/test_devcheck.py`）、`.claude/agents/checker.md`（Haiku，只讀）；營運者說「幫我檢查」時先派 `checker`，不要自己讀原始輸出；設計 DESIGN 6.21 |
 | 研究 | `src/crypto_robot/lab/`（`rebalance_variants.py` 是事先訂定的組合與標準，看過結果後不得修改） |
 
 改再平衡參數會讓模擬帳戶前後不一致：先問使用者要「接著用舊帳戶」還是「重開帳戶（備份 `state/paper_main.db` 後刪除）」。

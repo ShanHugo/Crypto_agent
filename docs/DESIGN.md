@@ -2353,6 +2353,59 @@ flowchart TD
 - **進前瞻還要另外做**：資料站晚 1～2 天，前瞻要改從 API 讀當下的值，也要處理 5 分鐘的差異。
 - 這一輪不改排程和系統流程，維護手冊只在進前瞻時才更新。
 
+### 6.21 開發輔助：一鍵檢查與檢查員（2026-11-08 營運者同意）
+
+> **已實作（2026-11-08）**：`scripts/devcheck.py`（測試 `tests/test_devcheck.py`）、`.claude/agents/checker.md`。
+
+營運者想讓開發省 token（2026-11-08）。「幫我檢查」每次都要讀測試、排程、健康、日誌、git 的原始輸出，常有幾百行。這段只改開發方式，**不動任何交易、模擬、排程或通知**。
+
+**只做兩件事**
+1. `scripts/devcheck.py`：不用 AI。把上面那些整理成一份短摘要：正常的合併成一行，只有 🟡、🔴、失敗才列細節。
+2. `.claude/agents/checker.md`：檢查員子代理，用 Haiku，只讀。跑 `devcheck`，有異常才去看相關日誌的尾端，回報不超過 8 行。原始輸出留在它那邊，不進主對話。
+
+**不做**：檢查員不改檔、不 commit、不 push、不讀 `.env`、不發 Discord。不讓 Qwen 參與。先只做 Crypto_Robot，好用再考慮另外兩個 repo。修 bug、研究、改設計還是主對話做。
+
+**系統架構**
+
+```mermaid
+flowchart LR
+  OP[營運者：幫我檢查] --> ME[主對話 Claude]
+  ME -- 派工 --> CK[檢查員 checker<br/>Haiku・只讀]
+  CK --> DC[scripts/devcheck.py<br/>不用 AI]
+  DC --> H[scripts/console_data.py<br/>現有健康檢查]
+  DC --> T[pytest -q<br/>只留最後一行]
+  DC --> S[排程 crypto_robot<br/>上次結果]
+  DC --> G[git<br/>未 commit・未 push]
+  DC -- 10～15 行摘要 --> CK
+  CK -- 只有異常時 --> L[logs/ 相關日誌尾端]
+  CK -- 最多 8 行結論 --> ME
+  ME -- 轉述・需要時自己深入 --> OP
+```
+
+**devcheck 流程**
+
+```mermaid
+flowchart TD
+  A[devcheck 開始] --> B[跑 console_data.py<br/>取各 Agent 健康燈號]
+  B --> C[跑 pytest -q]
+  C --> D[查排程上次結果]
+  D --> E[git status・有沒有沒 push 的 commit]
+  E --> F{有 🟡、🔴 或失敗？}
+  F -- 沒有 --> G[印一行：全部正常＋測試數<br/>結束碼 0]
+  F -- 有 --> H[只列異常項目與原因<br/>結束碼 1]
+```
+
+**輸出長這樣（示意）**
+
+```text
+devcheck 2026-11-08 09:10
+🔴 1  🟡 1  ✅ 7  測試 209 通過  git 乾淨、已 push
+🔴 futures_paper：心跳 3 小時沒更新
+🟡 paper_report：08:30 重試 1 次後成功
+```
+
+**驗證方式**：做好後拿同一次檢查，比較「我自己跑」和「檢查員跑」進主對話的輸出長度。省多少用量測，不先估。
+
 ## 7. 健康監控、備份、機密
 
 > 現況（2026-10-28）：已改寫成實際做法；原本規劃的 K 線、WebSocket、每日基準檢查與常駐看門狗，隨常駐架構沒有實作。
