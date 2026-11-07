@@ -2,7 +2,7 @@
 # 之後每小時重試到 07:35（同一天只會成交一次，已成功的重試只會略過）；08:30 推送當天凌晨的結果到 Discord。
 # 00:00 Kronos 多空預測（只記錄不下單，DESIGN.md 6.7；模型在 ../_vendor/kronos_venv）。
 # 08:05 blend 前瞻模擬的每週目標（DESIGN.md 6.18；每天跑，這週寫過就直接結束；不用金鑰、不下單）；futures_paper 是開機啟動的常駐模擬程序。
-# 08:15 多空比與未平倉量資料收集（DESIGN.md 6.19；只存資料，不接模型、模擬或真單）。
+# 多空比與未平倉量（DESIGN.md 6.19）2026-11-07 起不排程：歷史可從資料站補（6.20），要研究時手動執行 scripts/fetch_positioning.py；舊排程 positioning 由本腳本刪除。
 # 以 S4U 方式執行：不論是否登入 Windows 都會跑，且不需要儲存密碼（需以系統管理員身分執行本腳本）。
 # 電腦要開著、不能在睡眠；如果 01:35 錯過（例如關機），開機後會補跑，但補跑時若已超過 08:00，程式會自己略過。
 # 用法（PowerShell，在專案根目錄）：  powershell -ExecutionPolicy Bypass -File scripts\register_tasks.ps1
@@ -15,8 +15,7 @@ $wrapper = Join-Path $root 'scripts\run_scheduled.cmd'
 $tasks = @(@{Name = 'paper_rebalance'; At = '01:35'; Script = 'paper_rebalance'; Args = ''; RetryHours = 6},
            @{Name = 'paper_report'; At = '08:30'; Script = 'paper_rebalance'; Args = '--report'; RetryHours = 0},
            @{Name = 'kronos_forecast'; At = '00:00'; Script = 'kronos_forecast'; Args = ''; RetryHours = 0},
-           @{Name = 'xsec_forward'; At = '08:05'; Script = 'xsec_forward'; Args = ''; RetryHours = 6},
-           @{Name = 'positioning'; At = '08:15'; Script = 'fetch_positioning'; Args = ''; RetryHours = 0})
+           @{Name = 'xsec_forward'; At = '08:05'; Script = 'xsec_forward'; Args = ''; RetryHours = 6})
 
 if ($Disable) {
     foreach ($n in @($tasks.Name) + 'futures_paper') {
@@ -26,6 +25,7 @@ if ($Disable) {
     return
 }
 
+Unregister-ScheduledTask -TaskPath '\crypto_robot\' -TaskName 'positioning' -Confirm:$false -ErrorAction SilentlyContinue
 if (-not (Test-Path (Join-Path $root '.venv\Scripts\python.exe'))) { throw '找不到 .venv，請先建立虛擬環境並安裝 requirements.lock' }
 if (-not (Test-Path (Join-Path $root '.env'))) { Write-Warning '找不到 .env：沒有 DISCORD_WEBHOOK_URL 時不會推送' }
 
