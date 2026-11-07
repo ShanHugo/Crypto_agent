@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 
-from crypto_robot.lab import futures, multi_research, periods, rebalance_research, rebalance_variants, ta_fa, xsec, xsec_blend, xsec_positioning  # noqa: E402
+from crypto_robot.lab import futures, multi_research, periods, rebalance_research, rebalance_variants, ta_fa, xsec, xsec_blend  # noqa: E402
 from crypto_robot.lab.hourly import Series  # noqa: E402
 from crypto_robot.store.bars import BarStore  # noqa: E402
 
@@ -33,7 +33,6 @@ XS_DEV = ROOT / 'state' / 'research' / 'xsec_dev.json'
 XS_PREDS = ROOT / 'state' / 'research' / 'xsec_preds.jsonl'
 XB_DEV = ROOT / 'state' / 'research' / 'xsec_blend_dev.json'
 XB_RIDGE = ROOT / 'state' / 'research' / 'xsec_blend_ridge.jsonl'
-XP_DEV = ROOT / 'state' / 'research' / 'xsec_positioning_dev.json'
 
 
 def git_commit() -> str:
@@ -174,39 +173,10 @@ def run_xsec_blend(args) -> None:
     print(f'已寫入 {out}')
 
 
-def run_xsec_positioning(args) -> None:
-    """第二十五輪：dev 算研究期並寫下判定，只能跑一次；holdout 是參考段（判定寫下之後才能算）。"""
-    folder = ROOT / 'data' / 'xsec'
-    coins = xsec.load_coins(folder / 'coins')
-    when = datetime.now().strftime('%Y-%m-%d %H:%M')
-    preds = xsec.read_preds(XS_PREDS)
-    snaps = xsec_positioning.read_metrics(folder / 'metrics_weekly.csv')
-    if args.stage == 'dev':
-        if XP_DEV.exists():
-            sys.exit('研究期已經跑過，不重跑')
-        panels = {wd: xsec.read_panel(folder / f'panel_{wd}.csv') for wd in xsec.OFFSET}
-        res = xsec_positioning.run_dev(coins, panels, snaps, preds)
-        XP_DEV.write_text(json.dumps({**res, 'at': datetime.now().isoformat()}, ensure_ascii=False, indent=1), encoding='utf-8')
-        text = xsec_positioning.dev_report(res, when)
-    else:
-        if not XP_DEV.exists():
-            sys.exit('研究期判定還沒寫下，不准算參考段')
-        for key, weeks in xsec.read_preds(XB_RIDGE).items():
-            preds.setdefault(key, {}).update(weeks)
-        dev = json.loads(XP_DEV.read_text(encoding='utf-8'))
-        res = xsec_positioning.run_reference(coins, xsec.read_panel(folder / 'panel_mon.csv'), snaps, preds)
-        text = xsec_positioning.reference_report(res, dev, when)
-    name = 'dev' if args.stage == 'dev' else 'reference'
-    out = ROOT / 'reports' / f'research_{name}_xsec_positioning_{datetime.now():%Y%m%d}.md'
-    out.write_text(text, encoding='utf-8')
-    print(text)
-    print(f'已寫入 {out}')
-
-
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
-    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'futures', 'ta_fa', 'xsec', 'xsec_blend', 'xsec_positioning'], default='rebalance')
+    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'futures', 'ta_fa', 'xsec', 'xsec_blend'], default='rebalance')
     ap.add_argument('--stage', choices=['data', 'dev', 'holdout'], required=True)
     ap.add_argument('--variant', help='考卷期要考的規則名稱（見研究期報告）')
     ap.add_argument('--db', default=str(ROOT / 'data' / 'bars.db'))
@@ -225,9 +195,6 @@ def main() -> None:
         return
     if args.family == 'xsec_blend':
         run_xsec_blend(args)
-        return
-    if args.family == 'xsec_positioning':
-        run_xsec_positioning(args)
         return
 
     if args.family == 'rebalance3':
