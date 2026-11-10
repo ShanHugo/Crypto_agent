@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 
-from crypto_robot.lab import futures, multi_research, periods, rebalance_research, rebalance_variants, ta_fa, xsec, xsec_blend  # noqa: E402
+from crypto_robot.lab import futures, multi_research, periods, rebalance_research, rebalance_variants, ta_fa, usstock, xsec, xsec_blend  # noqa: E402
 from crypto_robot.lab.hourly import Series  # noqa: E402
 from crypto_robot.store.bars import BarStore  # noqa: E402
 
@@ -33,6 +33,10 @@ XS_DEV = ROOT / 'state' / 'research' / 'xsec_dev.json'
 XS_PREDS = ROOT / 'state' / 'research' / 'xsec_preds.jsonl'
 XB_DEV = ROOT / 'state' / 'research' / 'xsec_blend_dev.json'
 XB_RIDGE = ROOT / 'state' / 'research' / 'xsec_blend_ridge.jsonl'
+US_DIR = ROOT / 'data' / 'usstock'
+US_DEV = ROOT / 'state' / 'research' / 'usstock_dev.json'
+US_PREDS = ROOT / 'state' / 'research' / 'usstock_preds.jsonl'
+HOLDOUT_US = ROOT / 'state' / 'research' / 'holdout_usstock.json'
 
 
 def git_commit() -> str:
@@ -173,17 +177,57 @@ def run_xsec_blend(args) -> None:
     print(f'已寫入 {out}')
 
 
+def run_usstock(args) -> None:
+    """第二十六輪（DESIGN 6.22）：data 寫特徵表；dev 研究期判定（只能一次）；holdout 只考研究期通過的組，只考一次。"""
+    if args.stage == 'holdout' and HOLDOUT_US.exists():
+        print('考卷已經考過，以下是當時的結果（不重算）：')
+        print(HOLDOUT_US.read_text(encoding='utf-8'))
+        return
+    stocks, spy = usstock.load(US_DIR / 'daily', US_DIR / 'universe.json')
+    if args.stage == 'data':
+        print(json.dumps(usstock.write_panel(US_DIR / 'panel.csv', stocks, spy), ensure_ascii=False))
+        return
+    panel, preds = usstock.read_panel(US_DIR / 'panel.csv'), usstock.read_preds(US_PREDS)
+    when = datetime.now().strftime('%Y-%m-%d %H:%M')
+    if args.stage == 'dev':
+        if US_DEV.exists():
+            sys.exit('研究期判定已經寫下，不重跑')
+        res = usstock.run_dev(stocks, spy, panel, preds)
+        US_DEV.write_text(json.dumps({'pick': res['pick'], 'leak': res['leak'], 'at': datetime.now().isoformat()}, ensure_ascii=False), encoding='utf-8')
+        text = usstock.report(res, when)
+    else:
+        if not US_DEV.exists():
+            sys.exit('研究期還沒判定')
+        pick = json.loads(US_DEV.read_text(encoding='utf-8'))['pick']
+        if not pick:
+            sys.exit('研究期沒有組通過，不考')
+        commit = git_commit()
+        if commit.endswith('-dirty'):
+            sys.exit('src/ 有未 commit 的修改；先 commit')
+        exam = {**usstock.run_exam(stocks, spy, panel, preds, pick), 'commit': commit, 'at': datetime.now().isoformat()}
+        HOLDOUT_US.write_text(json.dumps(exam, ensure_ascii=False, indent=2), encoding='utf-8')
+        text = usstock.report(usstock.run_dev(stocks, spy, panel, preds), when, exam)
+    out = ROOT / 'reports' / f'research_{args.stage}_usstock_{datetime.now():%Y%m%d}.md'
+    out.parent.mkdir(exist_ok=True)
+    out.write_text(text, encoding='utf-8')
+    print(text)
+    print(f'已寫入 {out}')
+
+
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
-    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'futures', 'ta_fa', 'xsec', 'xsec_blend'], default='rebalance')
+    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'futures', 'ta_fa', 'xsec', 'xsec_blend', 'usstock'], default='rebalance')
     ap.add_argument('--stage', choices=['data', 'dev', 'holdout'], required=True)
     ap.add_argument('--variant', help='考卷期要考的規則名稱（見研究期報告）')
     ap.add_argument('--db', default=str(ROOT / 'data' / 'bars.db'))
     args = ap.parse_args()
 
-    if args.stage == 'data' and args.family != 'xsec':
-        sys.exit('--stage data 只有 --family xsec 用')
+    if args.stage == 'data' and args.family not in ('xsec', 'usstock'):
+        sys.exit('--stage data 只有 --family xsec、usstock 用')
+    if args.family == 'usstock':
+        run_usstock(args)
+        return
     if args.family == 'futures':
         run_futures(args)
         return
