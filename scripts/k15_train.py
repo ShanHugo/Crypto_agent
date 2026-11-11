@@ -20,7 +20,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 PANEL = ROOT / 'data' / 'k15' / 'panel.csv'
-OUT = ROOT / 'state' / 'research' / 'k15_preds_{}.csv'
+OUT = str(ROOT / 'state' / 'research' / 'k15_preds_{}.csv')
 DEV_JSON = ROOT / 'state' / 'research' / 'k15_dev.json'
 D, BAR, H = 86_400_000, 900_000, 4
 SEED = 100
@@ -80,7 +80,7 @@ def main() -> None:
     stage = sys.argv[1] if len(sys.argv) > 1 else ''
     if stage not in PERIOD:
         sys.exit('用法：k15_train.py dev|exam')
-    out = OUT.format(stage)
+    out = Path(OUT.format(stage))
     if out.exists():
         sys.exit(f'{out.name} 已存在：每個階段只跑一次')
     if stage == 'exam' and not (DEV_JSON.exists() and json.loads(DEV_JSON.read_text(encoding='utf-8')).get('pick')):
