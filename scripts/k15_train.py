@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import csv
+from array import array
 import json
 import sys
 from datetime import datetime, timezone
@@ -46,8 +47,11 @@ def quarters(a: int, b: int) -> list[tuple[int, int]]:
     return out
 
 
-def load() -> tuple[np.ndarray, list[str], np.ndarray, np.ndarray]:
-    t, sym, x, y = [], [], [], []
+def load() -> tuple:
+    """省記憶體：數字直接放進 array，幣名換成編號。"""
+    t, ids, x, y = array('q'), array('i'), array('d'), array('d')
+    names: dict[str, int] = {}
+    nan = float('nan')
     with PANEL.open(encoding='utf-8', newline='') as f:
         r = csv.reader(f)
         head = next(r)
@@ -55,10 +59,20 @@ def load() -> tuple[np.ndarray, list[str], np.ndarray, np.ndarray]:
         it, isym, iy = head.index('t'), head.index('sym'), head.index('target')
         for row in r:
             t.append(int(row[it]))
-            sym.append(row[isym])
-            x.append([float(row[i]) if row[i] else np.nan for i in ix])
+            ids.append(names.setdefault(row[isym], len(names)))
+            x.extend(float(row[i]) if row[i] else nan for i in ix)
             y.append(float(row[iy]))
-    return np.array(t, dtype=np.int64), sym, np.array(x), np.array(y)
+    sym = list(names)
+    return (np.frombuffer(t, dtype=np.int64), _Names(sym, ids),
+            np.frombuffer(x).reshape(-1, len(FEATURES)), np.frombuffer(y))
+
+
+class _Names:
+    def __init__(self, names: list[str], ids: array):
+        self.names, self.ids = names, ids
+
+    def __getitem__(self, i: int) -> str:
+        return self.names[self.ids[i]]
 
 
 def main() -> None:
