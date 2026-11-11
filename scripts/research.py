@@ -12,7 +12,6 @@ Binance 永續合約（第十四輪，--family futures；先跑 scripts/fetch_bi
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import subprocess
 import sys
@@ -22,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 
-from crypto_robot.lab import futures, mtf, multi_research, periods, rebalance_research, rebalance_variants, ta_fa, xsec, xsec_blend  # noqa: E402
+from crypto_robot.lab import futures, multi_research, periods, rebalance_research, rebalance_variants, ta_fa, xsec, xsec_blend  # noqa: E402
 from crypto_robot.lab.hourly import Series  # noqa: E402
 from crypto_robot.store.bars import BarStore  # noqa: E402
 
@@ -34,9 +33,6 @@ XS_DEV = ROOT / 'state' / 'research' / 'xsec_dev.json'
 XS_PREDS = ROOT / 'state' / 'research' / 'xsec_preds.jsonl'
 XB_DEV = ROOT / 'state' / 'research' / 'xsec_blend_dev.json'
 XB_RIDGE = ROOT / 'state' / 'research' / 'xsec_blend_ridge.jsonl'
-K15 = ROOT / 'data' / 'k15'
-MTF_DEV = ROOT / 'state' / 'research' / 'ta_dev.json'
-HOLDOUT_MTF = ROOT / 'state' / 'research' / 'holdout_ta.json'
 
 
 def git_commit() -> str:
@@ -177,82 +173,17 @@ def run_xsec_blend(args) -> None:
     print(f'已寫入 {out}')
 
 
-def build_mtf_panel() -> dict:
-    coins = xsec.load_coins(ROOT / 'data' / 'xsec' / 'coins')
-    uni = json.loads((K15 / 'universe.json').read_text(encoding='utf-8'))
-
-    def bars(sym: str) -> mtf.Bars:
-        rows = []
-        for p in sorted((K15 / 'raw' / sym).glob('*.csv')):
-            with p.open(encoding='utf-8', newline='') as f:
-                rows += list(csv.reader(f))
-        return mtf.Bars.from_rows(rows)
-
-    btc = mtf.btc_z4(bars('BTCUSDT'))
-    syms = sorted({s for v in uni.values() for s in v})
-    n = 0
-    tmp = K15 / 'panel_ta.tmp'
-    with tmp.open('w', encoding='utf-8', newline='') as f:
-        w = csv.writer(f)
-        w.writerow(mtf.COLUMNS)
-        for sym in syms:
-            mine = {m for m, v in uni.items() if sym in v}
-            c = coins[sym]
-            rows = mtf.rows_for(sym, bars(sym), mtf.daily_frame(c), c.ft, c.fr, btc, mine.__contains__)
-            mtf.write_rows(w, rows)
-            n += len(rows)
-            print(f'{sym}：{len(rows)} 列', flush=True)
-    tmp.replace(K15 / 'panel_ta.csv')
-    return {'coins': len(syms), 'rows': n}
-
-
-def run_mtf(args) -> None:
-    if args.stage == 'data':
-        print(json.dumps(build_mtf_panel(), ensure_ascii=False))
-        return
-    if args.stage == 'holdout' and HOLDOUT_MTF.exists():
-        print('考卷已經考過，以下是當時的結果（不重算）：')
-        print(HOLDOUT_MTF.read_text(encoding='utf-8'))
-        return
-    when = datetime.now().strftime('%Y-%m-%d %H:%M')
-    panel = K15 / 'panel_ta.csv'
-    if args.stage == 'dev':
-        stats = mtf.run(panel, ROOT / 'state' / 'research' / 'ta_preds_dev.csv', mtf.DEV, mtf.DEV_MID)
-        MTF_DEV.write_text(json.dumps({'pick': mtf.pick(stats), 'leak': mtf.leak(stats[mtf.CONTROL]), 'at': datetime.now().isoformat()},
-                                      ensure_ascii=False), encoding='utf-8')
-        text = mtf.report(stats, when)
-    else:
-        name = json.loads(MTF_DEV.read_text(encoding='utf-8')).get('pick') if MTF_DEV.exists() else None
-        if not name:
-            sys.exit('研究期沒有組通過，不考')
-        commit = git_commit()
-        if commit.endswith('-dirty'):
-            sys.exit('src/ 有未 commit 的修改；先 commit')
-        s = mtf.run(panel, ROOT / 'state' / 'research' / 'ta_preds_exam.csv', mtf.EXAM, mtf.EXAM_MID)[name]
-        exam = {'variant': name, 'stats': s, 'checks': mtf.exam_checks(s), 'commit': commit, 'at': datetime.now().isoformat()}
-        HOLDOUT_MTF.write_text(json.dumps(exam, ensure_ascii=False, indent=2), encoding='utf-8')
-        text = mtf.report({name: s}, when, 'exam')
-    out = ROOT / 'reports' / f'research_{args.stage}_ta_{datetime.now():%Y%m%d}.md'
-    out.parent.mkdir(exist_ok=True)
-    out.write_text(text, encoding='utf-8')
-    print(text)
-    print(f'已寫入 {out}')
-
-
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
-    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'futures', 'ta_fa', 'xsec', 'xsec_blend', 'ta'], default='rebalance')
+    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'futures', 'ta_fa', 'xsec', 'xsec_blend'], default='rebalance')
     ap.add_argument('--stage', choices=['data', 'dev', 'holdout'], required=True)
     ap.add_argument('--variant', help='考卷期要考的規則名稱（見研究期報告）')
     ap.add_argument('--db', default=str(ROOT / 'data' / 'bars.db'))
     args = ap.parse_args()
 
-    if args.stage == 'data' and args.family not in ('xsec', 'ta'):
-        sys.exit('--stage data 只有 --family xsec、ta 用')
-    if args.family == 'ta':
-        run_mtf(args)
-        return
+    if args.stage == 'data' and args.family != 'xsec':
+        sys.exit('--stage data 只有 --family xsec 用')
     if args.family == 'futures':
         run_futures(args)
         return
