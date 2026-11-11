@@ -12,6 +12,7 @@ Binance 永續合約（第十四輪，--family futures；先跑 scripts/fetch_bi
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import subprocess
 import sys
@@ -21,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 
-from crypto_robot.lab import futures, multi_research, periods, rebalance_research, rebalance_variants, ta_fa, xsec, xsec_blend  # noqa: E402
+from crypto_robot.lab import futures, multi_research, swing, periods, rebalance_research, rebalance_variants, ta_fa, xsec, xsec_blend  # noqa: E402
 from crypto_robot.lab.hourly import Series  # noqa: E402
 from crypto_robot.store.bars import BarStore  # noqa: E402
 
@@ -33,6 +34,9 @@ XS_DEV = ROOT / 'state' / 'research' / 'xsec_dev.json'
 XS_PREDS = ROOT / 'state' / 'research' / 'xsec_preds.jsonl'
 XB_DEV = ROOT / 'state' / 'research' / 'xsec_blend_dev.json'
 XB_RIDGE = ROOT / 'state' / 'research' / 'xsec_blend_ridge.jsonl'
+K15 = ROOT / 'data' / 'k15'
+SW_DEV = ROOT / 'state' / 'research' / 'swing_dev.json'
+HOLDOUT_SW = ROOT / 'state' / 'research' / 'holdout_swing.json'
 
 
 def git_commit() -> str:
@@ -173,17 +177,78 @@ def run_xsec_blend(args) -> None:
     print(f'已寫入 {out}')
 
 
+def build_swing_panel() -> dict:
+    coins = xsec.load_coins(ROOT / 'data' / 'xsec' / 'coins')
+    uni = json.loads((K15 / 'universe.json').read_text(encoding='utf-8'))
+    syms = sorted({s for v in uni.values() for s in v})
+    n = 0
+    tmp = K15 / 'panel_swing.tmp'
+    with tmp.open('w', encoding='utf-8', newline='') as f:
+        w = csv.writer(f)
+        w.writerow(swing.COLUMNS)
+        for sym in syms:
+            rows = []
+            for p in sorted((K15 / 'raw' / sym).glob('*.csv')):
+                with p.open(encoding='utf-8', newline='') as g:
+                    rows += list(csv.reader(g))
+            mine = {m for m, v in uni.items() if sym in v}
+            out = swing.rows_for(sym, coins[sym], swing.Bars.from_rows(rows), coins['BTCUSDT'], mine.__contains__)
+            swing.write_rows(w, out)
+            n += len(out)
+            print(f'{sym}：{len(out)} 列', flush=True)
+    tmp.replace(K15 / 'panel_swing.csv')
+    return {'coins': len(syms), 'rows': n}
+
+
+def run_swing(args) -> None:
+    if args.stage == 'data':
+        print(json.dumps(build_swing_panel(), ensure_ascii=False))
+        return
+    if args.stage == 'holdout' and HOLDOUT_SW.exists():
+        print('考卷已經考過，以下是當時的結果（不重算）：')
+        print(HOLDOUT_SW.read_text(encoding='utf-8'))
+        return
+    when = datetime.now().strftime('%Y-%m-%d %H:%M')
+    panel = K15 / 'panel_swing.csv'
+    if args.stage == 'dev':
+        stats = swing.run(panel, ROOT / 'state' / 'research' / 'swing_preds_dev.csv', swing.DEV, swing.DEV_MID)
+        SW_DEV.write_text(json.dumps({'pick': swing.pick(stats), 'leak': swing.leak(stats[swing.CONTROL]), 'at': datetime.now().isoformat()},
+                                     ensure_ascii=False), encoding='utf-8')
+        text = swing.report(stats, when)
+    else:
+        pick = json.loads(SW_DEV.read_text(encoding='utf-8')).get('pick') if SW_DEV.exists() else None
+        name = args.variant or pick        # --variant：營運者破例（2026-11-12 trend，DESIGN 6.3 第三十一輪）
+        if not name:
+            sys.exit('研究期沒有組通過，不考')
+        commit = git_commit()
+        if commit.endswith('-dirty'):
+            sys.exit('src/ 有未 commit 的修改；先 commit')
+        s = swing.run(panel, ROOT / 'state' / 'research' / 'swing_preds_exam.csv', swing.EXAM, swing.EXAM_MID)[name]
+        exam = {'variant': name, 'stats': s, 'checks': swing.exam_checks(s), 'commit': commit, 'at': datetime.now().isoformat(),
+                'operator_exception': name != pick}
+        HOLDOUT_SW.write_text(json.dumps(exam, ensure_ascii=False, indent=2), encoding='utf-8')
+        text = swing.report({name: s}, when, 'exam')
+    out = ROOT / 'reports' / f'research_{args.stage}_swing_{datetime.now():%Y%m%d}.md'
+    out.parent.mkdir(exist_ok=True)
+    out.write_text(text, encoding='utf-8')
+    print(text)
+    print(f'已寫入 {out}')
+
+
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
-    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'futures', 'ta_fa', 'xsec', 'xsec_blend'], default='rebalance')
+    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'futures', 'ta_fa', 'xsec', 'xsec_blend', 'swing'], default='rebalance')
     ap.add_argument('--stage', choices=['data', 'dev', 'holdout'], required=True)
     ap.add_argument('--variant', help='考卷期要考的規則名稱（見研究期報告）')
     ap.add_argument('--db', default=str(ROOT / 'data' / 'bars.db'))
     args = ap.parse_args()
 
-    if args.stage == 'data' and args.family != 'xsec':
-        sys.exit('--stage data 只有 --family xsec 用')
+    if args.stage == 'data' and args.family not in ('xsec', 'swing'):
+        sys.exit('--stage data 只有 --family xsec、swing 用')
+    if args.family == 'swing':
+        run_swing(args)
+        return
     if args.family == 'futures':
         run_futures(args)
         return
