@@ -8,6 +8,7 @@
 結果存在 reports/weekly_YYYYMMDD.md（不進 git），推送 Discord。只讀交易紀錄，不連 MAX。
 最後附上幣安資金費率做多的前瞻紀錄（DESIGN 6.7）：抓幣安公開資料、補記到 state/forecast/funding_long.jsonl；--no-send 時不抓、不寫。
 再附 Kronos＋人工判斷多空的成績（只讀 state/forecast/kronos_*.jsonl，DESIGN 6.7）。
+最後附 trend 波段前瞻紀錄（DESIGN 6.28）：抓幣安公開資料、從起點重算、只補記新完成的交易到 state/forecast/trend.jsonl；--no-send 時不抓、不寫。
 """
 from __future__ import annotations
 
@@ -17,6 +18,9 @@ import json
 import os
 import subprocess
 import sys
+import time
+import urllib.parse
+import urllib.request
 from datetime import date, datetime
 from pathlib import Path
 
@@ -28,9 +32,10 @@ from dotenv import load_dotenv  # noqa: E402
 
 from crypto_robot import weekly  # noqa: E402
 from crypto_robot.core.timeutil import TAIPEI  # noqa: E402
-from crypto_robot.forecast import funding_long, kronos_ls  # noqa: E402
+from crypto_robot.forecast import funding_long, kronos_ls, trend  # noqa: E402
 from crypto_robot.futures_agent import paper  # noqa: E402
 from crypto_robot.lab import futures  # noqa: E402
+from crypto_robot.lab.xsec import EXCLUDE  # noqa: E402
 from crypto_robot.lab.hourly import Series  # noqa: E402
 from crypto_robot.store.bars import BarStore  # noqa: E402
 from crypto_robot.live.executor import LiveStore  # noqa: E402
@@ -41,6 +46,9 @@ LIVE_DB = ROOT / 'state' / 'live' / 'live.db'
 PAPER_DB = ROOT / 'state' / 'paper_main.db'
 REPORTS = ROOT / 'reports'
 FUNDING_LOG = ROOT / 'state' / 'forecast' / 'funding_long.jsonl'
+TREND_LOG = ROOT / 'state' / 'forecast' / 'trend.jsonl'
+TREND_UNI = ROOT / 'state' / 'forecast' / 'trend_universe.json'
+FAPI = 'https://fapi.binance.com'
 
 
 def report_path(day: date) -> Path:
@@ -118,8 +126,84 @@ def futures_section() -> str:
         return f'blend 前瞻模擬失敗：{type(e).__name__}: {e}'
 
 
+def fapi(path: str, **q) -> object:
+    """幣安合約公開 API（不需要金鑰）；失敗重試 3 次。"""
+    url = FAPI + path + '?' + urllib.parse.urlencode(q)
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(url, timeout=30) as r:
+                return json.loads(r.read())
+        except OSError:
+            if attempt == 2:
+                raise
+            time.sleep(2 ** attempt)
+    raise AssertionError
+
+
+def blend_corr(rows: list[dict]) -> tuple[int, float | None]:
+    path = ROOT / 'state' / 'futures' / 'futures.db'
+    if not path.exists():
+        return 0, None
+    led = paper.Ledger(path, readonly=True)
+    try:
+        eq = [(t, float(e)) for t, e in led.equity_rows('main')]
+    finally:
+        led.close()
+    return trend.correlation(trend.weekly_returns(rows), trend.blend_weekly(eq))
+
+
+def trend_section(update: bool) -> str:
+    """trend 波段前瞻紀錄（DESIGN 6.28，只記錄不下單）。失敗只回一行，不影響週報。"""
+    try:
+        if not update:
+            rows = trend.read_log(TREND_LOG)
+            return trend.text(trend.status(rows), 0, 0, blend_corr(rows))
+        now = int(time.time() * 1000)
+        uni = json.loads(TREND_UNI.read_text(encoding='utf-8')) if TREND_UNI.exists() else {}
+        keys, k = [], trend.month_key(trend.START_MS)
+        while k <= trend.month_key(now):
+            keys.append(k)
+            y, m = map(int, k.split('-'))
+            k = f'{y + m // 12:04d}-{m % 12 + 1:02d}'
+        missing = [k for k in keys if k not in uni]
+        if missing:   # 名單算過就存，之後不重算（幣下架後名單不會變）
+            info = fapi('/fapi/v1/exchangeInfo')['symbols']
+            cands = [s['symbol'] for s in info if s['contractType'] == 'PERPETUAL' and s['quoteAsset'] == 'USDT'
+                     and s.get('underlyingType') == 'COIN' and s['status'] == 'TRADING' and s['symbol'] not in EXCLUDE]
+            allday = {}
+            for s in cands:
+                allday[s] = trend.Daily.from_klines(fapi('/fapi/v1/klines', symbol=s, interval='1d', limit=200))
+                time.sleep(0.05)
+            for k in missing:
+                uni[k] = trend.universe(k, allday)
+            TREND_UNI.parent.mkdir(parents=True, exist_ok=True)
+            TREND_UNI.write_text(json.dumps(uni, ensure_ascii=False, indent=0), encoding='utf-8')
+        daily = {s: trend.Daily.from_klines(fapi('/fapi/v1/klines', symbol=s, interval='1d', limit=500))
+                 for s in sorted({s for v in uni.values() for s in v})}
+        cache15: dict = {}
+        cachef: dict = {}
+
+        def get15(sym: str, t: int) -> trend.K15:
+            if (sym, t) not in cache15:
+                cache15[sym, t] = trend.K15.from_klines(fapi('/fapi/v1/klines', symbol=sym, interval='15m', startTime=t, limit=1000))
+            return cache15[sym, t]
+
+        def funding(sym: str) -> tuple[list[int], list[float]]:
+            if sym not in cachef:
+                rows = fapi('/fapi/v1/fundingRate', symbol=sym, startTime=trend.START_MS - 3 * trend.D, limit=1000)
+                cachef[sym] = ([int(r['fundingTime']) for r in rows], [float(r['fundingRate']) for r in rows])
+            return cachef[sym]
+
+        done, holding = trend.simulate(now, uni, daily, get15, funding)
+        rows, added = trend.update(TREND_LOG, done)
+        return trend.text(trend.status(rows), added, len(holding), blend_corr(rows))
+    except Exception as e:   # noqa: BLE001
+        return f'trend 波段前瞻紀錄失敗：{type(e).__name__}: {e}'
+
+
 async def run(day: date, no_send: bool) -> int:
-    text = weekly.text(build(day)) + '\n\n' + funding_section(update=not no_send) + '\n\n' + kronos_section() + '\n\n' + futures_section()
+    text = (weekly.text(build(day)) + '\n\n' + funding_section(update=not no_send) + '\n\n' + kronos_section() + '\n\n' + futures_section()
+            + '\n\n' + trend_section(update=not no_send))
     print(text)
     if no_send:
         return 0

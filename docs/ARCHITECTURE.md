@@ -20,6 +20,7 @@
 | 操作台分頁壞掉 | `scripts/console_data.py`（資料；前瞻紀錄是 `forecast_data()`）；Cashflow_orchestrator `src/console/app.py` 的 `/api/crypto`、`src/console/templates/console.html` 的 `loadCrypto`（四個子分頁：總覽、前瞻紀錄、健康與排程、紀錄） | 2、6 |
 | MAX API 回應改了 | `exchange/max/public.py`；端點查核在 DESIGN.md 第 1 節 | 2 |
 | blend 前瞻模擬沒心跳、沒目標、數字怪 | `logs\futures_paper.log`、`logs\xsec_forward.log`、排程 `futures_paper`／`xsec_forward`、`state\futures\heartbeat.json`、`futures_agent/paper.py` | 9 |
+| trend 波段前瞻紀錄數字怪、週報說失敗 | `scripts/weekly_review.py --no-send`（只讀紀錄不連網）、`src/crypto_robot/forecast/trend.py`、`state\forecast\trend.jsonl`、`trend_universe.json` | 6 |
 | 多空比資料 | 2026-11-07 起不排程，要研究時手動執行 `scripts/fetch_positioning.py`（API 只有最近 30 天；更早的歷史從公開資料站補，DESIGN 6.19、6.20） |
 | 新研究 | `/research-round` skill；研究結果在 DESIGN.md 6.3 | — |
 | 開發時「幫我檢查」 | 先跑 `scripts/devcheck.py`：健康燈號、測試、排程、git 整理成幾行，全部正常結束碼 0；有 🟡／🔴 要翻日誌才派 `checker` 子代理（`.claude/agents/checker.md`，Haiku，只讀）（DESIGN 6.21） | 1 |
@@ -84,6 +85,8 @@ flowchart LR
     DB & LDB --> WK
     WK --> FL[forecast/funding_long.py<br/>幣安資金費率做多・只記錄]
     FL --> FLOG[(state/forecast/funding_long.jsonl<br/>只新增)]
+    WK --> TRF[forecast/trend.py<br/>trend 波段・只記錄]
+    TRF --> TLOG[(state/forecast/trend.jsonl<br/>＋trend_universe.json・只新增)]
     KF[kronos_forecast 00:00<br/>Kronos 多空預測・只記錄] --> KM[kronos_model.py<br/>另一個 venv（torch）]
     KF --> KLOG[(state/forecast/kronos_ls.jsonl<br/>只新增)]
     JD[judge.py<br/>營運者手動記判斷] --> JLOG[(state/forecast/kronos_judge.jsonl<br/>只新增)]
@@ -182,6 +185,7 @@ flowchart TD
 | 每週事實檢討（`paper_report` 每週一，備份之前） | `paper_rebalance.py --report` → `scripts/weekly_review.py`（也可手動 `--no-send`／`--date`） | `src/crypto_robot/weekly.py`（純函式） | `state/live/live.db`、`state/paper_main.db` | `reports/weekly_YYYYMMDD.md`、Discord | 只列數字、不給建議；失敗不影響備份 | 最近一個週一（2026-11-02 起）有產生 |
 | 幣安資金費率做多前瞻紀錄（每週檢討的最後一段，2026-11-02 起） | `weekly_review.py` 先跑 `fetch_binance.py --futures` 再補記（`--no-send` 不抓不寫） | `src/crypto_robot/forecast/funding_long.py`（規則借用 `lab/futures.py`） | Binance 公開 API（不需要金鑰） | `state/forecast/funding_long.jsonl`、週報最後一段 | 只記錄不下單；失敗只在週報印一行，不影響週報與備份 | 週報最後一段有筆數，沒有「失敗」字樣 |
 | Kronos＋人工判斷多空前瞻紀錄（2026-11-03 起） | `run_scheduled.cmd kronos_forecast` → `kronos_forecast.py`；營運者手動 `judge.py long\|short\|flat` | `forecast/kronos_ls.py`（純函式）、`kronos_model.py`（`../_vendor/kronos_venv`，Kronos commit 67b630e） | Binance 公開 API、`data/bars.db` | `state/forecast/kronos_ls.jsonl`、`kronos_judge.jsonl`、`logs\kronos_forecast.log`；08:30 報告一行、週報一段 | 只記錄不下單；已預測過、08:00 後就略過；判斷一天一次、不能改 | 08:30 報告沒有「今天 00:00 沒有預測」；`health.py` 的 `check_kronos`：08:00 後看今天有沒有預測（漏 1～2 天 🟡、連續 3 天以上 🔴；主管當已知狀況，不會自動暫停） |
+| trend 波段前瞻紀錄（每週檢討最後一段，2026-11-13 起，DESIGN 6.28） | `weekly_review.py` 呼叫幣安公開 API、從起點重算（`--no-send` 不抓不寫） | `src/crypto_robot/forecast/trend.py`（規則同第三十一輪 `trend`） | Binance 公開 API（不需要金鑰） | `state/forecast/trend.jsonl`、`trend_universe.json`、週報最後一段 | 只記錄不下單；失敗只在週報印一行，下週重算補上 | 週報最後一段有筆數，沒有「失敗」字樣 |
 | blend 前瞻模擬（2026-11-09 起，不碰真錢） | 排程 `futures_paper`（開機啟動）、`xsec_forward`（08:05） | `futures_agent/paper.py`、`lab/xsec.py`、`lab/xsec_blend.py`、`xsec_forward_train.py`（`_vendor/ml_venv`） | Binance 公開 API、`data/xsec/` | `state/futures/`、`data/xsec/` | 連線失敗下一分鐘重試；關機期間開機後補換倉與資金費率，不補算成交 | `check_futures_paper`：心跳超過 2 小時 🔴、程式錯誤 🔴、這週沒目標 🟡／🔴、模擬結束或暫停 🟡 |
 | 多空比資料收集（只存資料） | **手動**（2026-11-07 起不排程） | `positioning.py`、`fetch_positioning.py` | Binance 公開資料 | `state/positioning/positioning.db` | — | 不列在健康檢查（`check_positioning` 保留，要恢復排程時再接回） |
 | 系統與安全（不是排程） | 操作台開分頁時 | `health.py` 的 `check_system` | git、logs、考卷檔、K 線快取 | — | — | `.env` 沒進 git、專案資料夾沒有金鑰檔、紀錄檔沒有 webhook；考卷期與 K 線快取只顯示資訊 |
@@ -265,6 +269,7 @@ flowchart TD
 | `state/research/holdout.json` | 考卷期結果（只考一次） | **不能** |
 | `state/forecast/funding_long.jsonl` | 幣安資金費率做多的前瞻紀錄（2026-11-02 起，每週一補記，只新增；DESIGN 6.7） | 能從幣安公開資料重算，但紀錄本身是前瞻證據，不要刪 |
 | `state/forecast/kronos_ls.jsonl`、`kronos_judge.jsonl` | Kronos 每天 00:00 的多空預測、營運者的判斷（2026-11-03 起，只新增；DESIGN 6.7） | 判斷無法重建，紀錄是前瞻證據，不要刪；備份會帶到 |
+| `state/forecast/trend.jsonl`、`trend_universe.json` | trend 波段前瞻紀錄的完成交易、每月名單（2026-11-13 起，每週一補記，只新增；DESIGN 6.28） | 交易能從公開資料重算，但名單和紀錄是前瞻證據，不要刪 |
 | `state/futures/futures.db` | blend 前瞻模擬的帳戶（`main`，對照 `reference`）、成交、權益、事件 | **不能**（前瞻紀錄） |
 | `state/futures/targets.json`、`targets_history.jsonl`、`models/`、`preds/`、`preds_ridge/`、`heartbeat.json` | 每週目標與選幣池（歷史要留著算第 30 週的隨機對照）、每月模型、預測、心跳 | 歷史**不能**；其他能重建 |
 | `state/futures/paper.paused` | 有這個檔案就暫停模擬；只有營運者手動建立，不影響真單 | 刪掉就恢復 |
