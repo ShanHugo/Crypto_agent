@@ -1,8 +1,7 @@
 """研究工具：比例再平衡（第三輪，ETH＋台幣）與三資產再平衡（第五輪，ETH＋USDT＋台幣，用 --family rebalance3，沒有考卷）、
 Binance 永續合約（第十四輪，--family futures；先跑 scripts/fetch_binance.py --futures）、
 技術面與基本面研究 Agent（第十七輪，--family ta_fa；再先跑 scripts/fetch_macro.py）、
-多幣排序（第二十一輪，--family xsec：先跑 scripts/fetch_xsec.py，--stage data 產生資料，訓練與預測用 scripts/xsec_train.py）、
-15 分 K 合約短線（第二十七輪，--family k15：先跑 scripts/fetch_k15.py，--stage data 產生資料，訓練用 scripts/k15_train.py）。
+多幣排序（第二十一輪，--family xsec：先跑 scripts/fetch_xsec.py，--stage data 產生資料，訓練與預測用 scripts/xsec_train.py）。
 
     .venv\\Scripts\\python.exe scripts/research.py --stage dev
     .venv\\Scripts\\python.exe scripts/research.py --stage holdout       # 已考過：只顯示當時的結果
@@ -13,7 +12,6 @@ Binance 永續合約（第十四輪，--family futures；先跑 scripts/fetch_bi
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import subprocess
 import sys
@@ -23,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 
-from crypto_robot.lab import futures, k15, multi_research, periods, rebalance_research, rebalance_variants, ta_fa, xsec, xsec_blend  # noqa: E402
+from crypto_robot.lab import futures, multi_research, periods, rebalance_research, rebalance_variants, ta_fa, xsec, xsec_blend  # noqa: E402
 from crypto_robot.lab.hourly import Series  # noqa: E402
 from crypto_robot.store.bars import BarStore  # noqa: E402
 
@@ -35,9 +33,6 @@ XS_DEV = ROOT / 'state' / 'research' / 'xsec_dev.json'
 XS_PREDS = ROOT / 'state' / 'research' / 'xsec_preds.jsonl'
 XB_DEV = ROOT / 'state' / 'research' / 'xsec_blend_dev.json'
 XB_RIDGE = ROOT / 'state' / 'research' / 'xsec_blend_ridge.jsonl'
-K15 = ROOT / 'data' / 'k15'
-K15_DEV = ROOT / 'state' / 'research' / 'k15_dev.json'
-HOLDOUT_K15 = ROOT / 'state' / 'research' / 'holdout_k15.json'
 
 
 def git_commit() -> str:
@@ -178,83 +173,17 @@ def run_xsec_blend(args) -> None:
     print(f'已寫入 {out}')
 
 
-def build_k15_panel() -> dict:
-    coins = xsec.load_coins(ROOT / 'data' / 'xsec' / 'coins')
-    uni = json.loads((K15 / 'universe.json').read_text(encoding='utf-8'))
-    raw = K15 / 'raw'
-
-    def bars(sym: str) -> k15.Bars:
-        rows = []
-        for p in sorted((raw / sym).glob('*.csv')):
-            with p.open(encoding='utf-8', newline='') as f:
-                rows += list(csv.reader(f))
-        return k15.Bars.from_rows(rows)
-
-    btc = k15.btc_z4(bars('BTCUSDT'))
-    syms = sorted({s for v in uni.values() for s in v})
-    n = 0
-    tmp = K15 / 'panel.tmp'
-    with tmp.open('w', encoding='utf-8', newline='') as f:
-        w = csv.writer(f)
-        w.writerow(k15.COLUMNS)
-        for sym in syms:
-            mine = {m for m, v in uni.items() if sym in v}
-            c = coins[sym]
-            rows = k15.rows_for(sym, bars(sym), c.ft, c.fr, btc, mine.__contains__)
-            k15.write_rows(w, rows)
-            n += len(rows)
-            print(f'{sym}：{len(rows)} 列', flush=True)
-    tmp.replace(K15 / 'panel.csv')
-    return {'coins': len(syms), 'rows': n}
-
-
-def run_k15(args) -> None:
-    if args.stage == 'data':
-        print(json.dumps(build_k15_panel(), ensure_ascii=False))
-        return
-    if args.stage == 'holdout' and HOLDOUT_K15.exists():
-        print('考卷已經考過，以下是當時的結果（不重算）：')
-        print(HOLDOUT_K15.read_text(encoding='utf-8'))
-        return
-    when = datetime.now().strftime('%Y-%m-%d %H:%M')
-    if args.stage == 'dev':
-        stats = k15.run(K15 / 'panel.csv', ROOT / 'state' / 'research' / 'k15_preds_dev.csv', k15.DEV, k15.DEV_MID)
-        K15_DEV.write_text(json.dumps({'pick': k15.pick(stats), 'leak': k15.leak(stats[k15.CONTROL]), 'at': datetime.now().isoformat()},
-                                      ensure_ascii=False), encoding='utf-8')
-        text = k15.report(stats, when)
-    else:
-        name = json.loads(K15_DEV.read_text(encoding='utf-8')).get('pick') if K15_DEV.exists() else None
-        if not name:
-            sys.exit('研究期沒有組通過，不考')
-        commit = git_commit()
-        if commit.endswith('-dirty'):
-            sys.exit('src/ 有未 commit 的修改；先 commit')
-        stats = k15.run(K15 / 'panel.csv', ROOT / 'state' / 'research' / 'k15_preds_exam.csv', k15.EXAM, k15.EXAM_MID)
-        s = stats[name]
-        exam = {'variant': name, 'stats': s, 'checks': k15.exam_checks(s), 'commit': commit, 'at': datetime.now().isoformat()}
-        HOLDOUT_K15.write_text(json.dumps(exam, ensure_ascii=False, indent=2), encoding='utf-8')
-        text = k15.report({name: s}, when, 'exam') + '\n2026 參考段與美股合約報告：考卷後另外補（規則在 DESIGN 6.3 第二十七輪）。\n'
-    out = ROOT / 'reports' / f'research_{args.stage}_k15_{datetime.now():%Y%m%d}.md'
-    out.parent.mkdir(exist_ok=True)
-    out.write_text(text, encoding='utf-8')
-    print(text)
-    print(f'已寫入 {out}')
-
-
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
-    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'futures', 'ta_fa', 'xsec', 'xsec_blend', 'k15'], default='rebalance')
+    ap.add_argument('--family', choices=['rebalance', 'rebalance3', 'futures', 'ta_fa', 'xsec', 'xsec_blend'], default='rebalance')
     ap.add_argument('--stage', choices=['data', 'dev', 'holdout'], required=True)
     ap.add_argument('--variant', help='考卷期要考的規則名稱（見研究期報告）')
     ap.add_argument('--db', default=str(ROOT / 'data' / 'bars.db'))
     args = ap.parse_args()
 
-    if args.stage == 'data' and args.family not in ('xsec', 'k15'):
-        sys.exit('--stage data 只有 --family xsec、k15 用')
-    if args.family == 'k15':
-        run_k15(args)
-        return
+    if args.stage == 'data' and args.family != 'xsec':
+        sys.exit('--stage data 只有 --family xsec 用')
     if args.family == 'futures':
         run_futures(args)
         return
