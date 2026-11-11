@@ -15,6 +15,7 @@ import json
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
@@ -44,7 +45,7 @@ def fetch_one(sym: str, month: str) -> int:
         return -1
     for attempt in range(5):
         try:
-            with urllib.request.urlopen(URL.format(sym, month), timeout=60) as r:
+            with urllib.request.urlopen(urllib.parse.quote(URL.format(sym, month), safe=':/'), timeout=60) as r:   # 有中文代號的幣
                 blob = r.read()
             break
         except urllib.error.HTTPError as e:

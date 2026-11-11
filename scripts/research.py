@@ -233,9 +233,7 @@ def run_k15(args) -> None:
         s = stats[name]
         exam = {'variant': name, 'stats': s, 'checks': k15.exam_checks(s), 'commit': commit, 'at': datetime.now().isoformat()}
         HOLDOUT_K15.write_text(json.dumps(exam, ensure_ascii=False, indent=2), encoding='utf-8')
-        text = k15.report({name: s}, when, 'exam') + '
-2026 參考段與美股合約報告：考卷後另外補（規則在 DESIGN 6.3 第二十七輪）。
-'
+        text = k15.report({name: s}, when, 'exam') + '\n2026 參考段與美股合約報告：考卷後另外補（規則在 DESIGN 6.3 第二十七輪）。\n'
     out = ROOT / 'reports' / f'research_{args.stage}_k15_{datetime.now():%Y%m%d}.md'
     out.parent.mkdir(exist_ok=True)
     out.write_text(text, encoding='utf-8')
