@@ -48,6 +48,7 @@ REPORTS = ROOT / 'reports'
 FUNDING_LOG = ROOT / 'state' / 'forecast' / 'funding_long.jsonl'
 TREND_LOG = ROOT / 'state' / 'forecast' / 'trend.jsonl'
 TREND_UNI = ROOT / 'state' / 'forecast' / 'trend_universe.json'
+TREND_HOLD = ROOT / 'state' / 'forecast' / 'trend_holding.json'   # 還在抱的部位（每週覆寫，給操作台看）
 FAPI = 'https://fapi.binance.com'
 
 
@@ -196,6 +197,7 @@ def trend_section(update: bool) -> str:
 
         done, holding = trend.simulate(now, uni, daily, get15, funding)
         rows, added = trend.update(TREND_LOG, done)
+        TREND_HOLD.write_text(json.dumps({'asof': now, 'holding': holding}, ensure_ascii=False), encoding='utf-8')
         return trend.text(trend.status(rows), added, len(holding), blend_corr(rows))
     except Exception as e:   # noqa: BLE001
         return f'trend 波段前瞻紀錄失敗：{type(e).__name__}: {e}'

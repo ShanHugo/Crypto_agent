@@ -161,7 +161,8 @@ def futures_data() -> dict:
     from crypto_robot.futures_agent import paper
     read = lambda p: json.loads(p.read_text(encoding='utf-8')) if p.exists() else None     # noqa: E731
     beat, target = read(FUTURES / 'heartbeat.json'), read(FUTURES / 'targets.json')
-    out = {'beat': beat, 'target': target, 'text': paper.text(paper.summary([], [], [], [], paper.Account('main'))), 'recent': []}
+    out = {'beat': beat, 'target': target, 'text': paper.text(paper.summary([], [], [], [], paper.Account('main'))), 'recent': [],
+           'curve': [], 'positions': []}
     if (FUTURES / 'futures.db').exists():
         led = paper.Ledger(FUTURES / 'futures.db', readonly=True)
         try:
@@ -169,9 +170,37 @@ def futures_data() -> dict:
             out['text'] = paper.text(paper.summary(led.equity_rows('main'), led.equity_rows('reference'), trades, led.events('main'), led.load('main')))
             out['recent'] = [{'at': datetime.fromtimestamp(t['ts'] / 1000, TAIPEI).strftime('%Y-%m-%d %H:%M'), 'sym': t['sym'], 'qty': num(t['qty']),
                               'price': num(t['price']), 'fee': num(t['fee']), 'reason': t['reason']} for t in trades[-30:]]
+            rows, ref = led.equity_rows('main'), dict(led.equity_rows('reference'))
+            rows = [r for i, r in enumerate(rows) if i % 6 == 0 or i == len(rows) - 1]   # 每小時一筆 → 約每 6 小時一點
+            out['curve'] = [{'at': at(t), 'equity': float(e), 'reference': float(ref[t]) if t in ref else None} for t, e in rows]
+            out['positions'] = [{'sym': s, 'qty': num(p.qty), 'entry': num(p.entry), 'mark': num(p.mark), 'pnl': float(p.qty * (p.mark - p.entry))}
+                                for s, p in sorted(led.load('main').positions.items())]
         finally:
             led.close()
     return out
+
+
+def at(ms: int) -> str:
+    return datetime.fromtimestamp(ms / 1000, TAIPEI).strftime('%Y-%m-%d %H:%M')
+
+
+def trend_data() -> dict:
+    """trend 波段前瞻紀錄（DESIGN 6.28）：只讀週一補記的紀錄檔，不連網、不重算。"""
+    import weekly_review as wr
+    from crypto_robot.forecast import trend
+    rows = sorted(trend.read_log(wr.TREND_LOG), key=lambda r: (r['exit_t'], r['sym']))
+    hold = json.loads(wr.TREND_HOLD.read_text(encoding='utf-8')) if wr.TREND_HOLD.exists() else None
+    mult, curve = 1.0, [{'at': at(trend.START_MS), 'mult': 1.0}]
+    for r in rows:
+        mult *= 1 + trend.SIZE * r['net']
+        curve.append({'at': at(r['exit_t']), 'mult': mult})
+    held = hold['holding'] if hold else []
+    return {
+        'text': trend.text(trend.status(rows), 0, len(held), wr.blend_corr(rows)), 'curve': curve, 'asof': at(hold['asof']) if hold else None,
+        'holding': [{'at': at(h['t']), 'sym': h['sym'], 'side': h['side'], 'entry': h['entry'], 'stop': h['stop']} for h in held],
+        'trades': [{'at': at(r['t']), 'sym': r['sym'], 'side': r['side'], 'entry': r['entry'], 'exit': r['exit_px'], 'days': r['days'],
+                    'stopped': r['stopped'], 'net': r['net']} for r in rows[-30:]],
+    }
 
 
 def kronos_days() -> set:
@@ -241,6 +270,7 @@ def main() -> None:
         'weekly': weekly_latest(),
         'forecast': forecast_data(now),
         'futures': futures,
+        'trend': trend_data(),
         'health': {'agents': agents, 'overall': hc.overall(agents)},
         'logs': {k: [hc.WEBHOOK.sub('<webhook>/', ln) for ln in v[-80:]] for k, v in logs.items()},
     }

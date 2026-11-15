@@ -56,14 +56,14 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 | 再平衡判斷（研究與模擬共用） | `src/crypto_robot/agents/strategy/rebalance.py`；多資產是 `rebalance_multi.py` |
 | 排程時間 | `scripts/register_tasks.ps1` 的 `$tasks`（改完請使用者以系統管理員重跑） |
 | MAX 公開 API | `src/crypto_robot/exchange/max/public.py`（端點已實測，見 DESIGN.md 第 1 節） |
-| 操作台「虛擬貨幣」分頁的資料、Agent 健康檢查 | `scripts/console_data.py`（只讀 JSON；Kronos／資金費率前瞻紀錄在 `forecast_data()`）、`src/crypto_robot/health.py`；畫面與 API 在 Cashflow_orchestrator 的 `src/console/templates/console.html`（子分頁：總覽、前瞻紀錄、健康與排程、紀錄；`loadCrypto`、`renderCryptoForecast`）、`src/console/app.py`（`/api/crypto`） |
+| 操作台「虛擬貨幣」分頁的資料、Agent 健康檢查 | `scripts/console_data.py`（只讀 JSON；Kronos／資金費率前瞻紀錄在 `forecast_data()`；blend 走勢與部位在 `futures_data()`、trend 在 `trend_data()`）、`src/crypto_robot/health.py`；畫面與 API 在 Cashflow_orchestrator 的 `src/console/templates/console.html`（子分頁：總覽、前瞻紀錄、健康與排程、紀錄；`loadCrypto`、`renderCryptoForecast`）、`src/console/app.py`（`/api/crypto`） |
 | 每週事實檢討（第 2 關的成績單，每週一 08:30 報告後） | `src/crypto_robot/weekly.py`（計算與文字）、`scripts/weekly_review.py`（讀資料、存 `reports/weekly_*.md`、推送）；只列數字，不加建議 |
 | 備份 | `src/crypto_robot/backup.py`、`scripts/backup.py`；08:30 報告推送後自動執行；目的地在 `.env` 的 `BACKUP_DIRS`（不要寫進 git） |
 | 真單執行與安全檢查 | `src/crypto_robot/live/executor.py`（`check_guards`、`plan_orders`、`run_live`）、`scripts/live_trade.py`（開關、設定、`--plan`）；紀錄 `state/live/live.db` |
 | 真實帳戶（唯讀）、IP 變動 | `src/crypto_robot/live/readonly.py`、`exchange/max/private.py` 的 `MaxPrivateClient`（只有查詢方法；會下單的是 `MaxTradingClient`）、`scripts/live_check.py`（`--accept-ip`）；紀錄在 `state/live/`（含公開 IP，絕不進 git） |
 | 幣安合約 24 小時 Agent（骨架，還不能下單） | `src/crypto_robot/futures_agent/agent.py`（`tick`、`AgentConfig`、`NoStrategy`）；流程圖在 `docs/ARCHITECTURE.md` 第 9 節 |
 | blend 前瞻模擬（不碰真錢） | 模擬帳戶 `src/crypto_robot/futures_agent/paper.py`；常駐程序 `scripts/futures_paper.py`；每週目標 `scripts/xsec_forward.py`、訓練 `scripts/xsec_forward_train.py`、名單 `lab/xsec_blend.py` 的 `blend_picks`；健康檢查 `health.py` 的 `check_futures_paper`；狀態 `state/futures/`；設計 DESIGN 6.18、6.16 |
-| trend 波段前瞻紀錄（只記錄，DESIGN 6.28） | `src/crypto_robot/forecast/trend.py`（規則同第三十一輪，看過結果後不改）；`scripts/weekly_review.py` 的 `trend_section()` 每週一抓公開資料重算、只補記；紀錄 `state/forecast/trend.jsonl`、`trend_universe.json` |
+| trend 波段前瞻紀錄（只記錄，DESIGN 6.28） | `src/crypto_robot/forecast/trend.py`（規則同第三十一輪，看過結果後不改）；`scripts/weekly_review.py` 的 `trend_section()` 每週一抓公開資料重算、只補記；紀錄 `state/forecast/trend.jsonl`、`trend_universe.json`；還在抱的部位快照 `trend_holding.json`（每週覆寫，操作台用） |
 | 多空比與未平倉量資料收集（2026-11-07 起不排程，手動執行） | `src/crypto_robot/positioning.py`、`scripts/fetch_positioning.py`；健康檢查 `health.py` 的 `check_positioning`（目前沒接）；資料 `state/positioning/positioning.db`；設計 DESIGN 6.19 |
 | 開發用一鍵檢查（不用 AI）、唯讀檢查員子代理 | `scripts/devcheck.py`（健康燈號、測試、排程、git；測試 `tests/test_devcheck.py`）、`.claude/agents/checker.md`（Haiku，只讀）；營運者說「幫我檢查」時先自己跑 devcheck（約 2 行），有 🟡／🔴 要翻日誌才派 `checker`（一次約 6 萬 Haiku token），不要自己讀原始輸出；設計 DESIGN 6.21 |
 | 研究 | `src/crypto_robot/lab/`（`rebalance_variants.py` 是事先訂定的組合與標準，看過結果後不得修改） |
