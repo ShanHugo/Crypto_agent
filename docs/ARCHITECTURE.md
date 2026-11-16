@@ -89,6 +89,10 @@ flowchart LR
     TRF --> TLOG[(state/forecast/trend.jsonl<br/>＋trend_universe.json・只新增)]
     TRF --> THOLD[(state/forecast/trend_holding.json<br/>還在抱的部位・每週覆寫)]
     TLOG & THOLD --> CD
+    DP[daily_picks 08:05<br/>每日 5 檔候選・未驗證・只記錄] --> PK[forecast/picks.py<br/>trend 名單＋方向・2ATR 停損・2R 止盈・3～5 倍]
+    TLOG -. 名單 .-> PK
+    PK --> PLOG[(state/forecast/daily_picks.jsonl<br/>＋daily_picks_result.jsonl・只新增)]
+    PLOG --> CD
     KF[kronos_forecast 00:00<br/>Kronos 多空預測・只記錄] --> KM[kronos_model.py<br/>另一個 venv（torch）]
     KF --> KLOG[(state/forecast/kronos_ls.jsonl<br/>只新增)]
     JD[judge.py<br/>營運者手動記判斷] --> JLOG[(state/forecast/kronos_judge.jsonl<br/>只新增)]
@@ -188,6 +192,7 @@ flowchart TD
 | 幣安資金費率做多前瞻紀錄（每週檢討的最後一段，2026-11-02 起） | `weekly_review.py` 先跑 `fetch_binance.py --futures` 再補記（`--no-send` 不抓不寫） | `src/crypto_robot/forecast/funding_long.py`（規則借用 `lab/futures.py`） | Binance 公開 API（不需要金鑰） | `state/forecast/funding_long.jsonl`、週報最後一段 | 只記錄不下單；失敗只在週報印一行，不影響週報與備份 | 週報最後一段有筆數，沒有「失敗」字樣 |
 | Kronos＋人工判斷多空前瞻紀錄（2026-11-03 起） | `run_scheduled.cmd kronos_forecast` → `kronos_forecast.py`；營運者手動 `judge.py long\|short\|flat` | `forecast/kronos_ls.py`（純函式）、`kronos_model.py`（`../_vendor/kronos_venv`，Kronos commit 67b630e） | Binance 公開 API、`data/bars.db` | `state/forecast/kronos_ls.jsonl`、`kronos_judge.jsonl`、`logs\kronos_forecast.log`；08:30 報告一行、週報一段 | 只記錄不下單；已預測過、08:00 後就略過；判斷一天一次、不能改 | 08:30 報告沒有「今天 00:00 沒有預測」；`health.py` 的 `check_kronos`：08:00 後看今天有沒有預測（漏 1～2 天 🟡、連續 3 天以上 🔴；主管當已知狀況，不會自動暫停） |
 | trend 波段前瞻紀錄（每週檢討最後一段，2026-11-13 起，DESIGN 6.28） | `weekly_review.py` 呼叫幣安公開 API、從起點重算（`--no-send` 不抓不寫） | `src/crypto_robot/forecast/trend.py`（規則同第三十一輪 `trend`） | Binance 公開 API（不需要金鑰） | `state/forecast/trend.jsonl`、`trend_universe.json`、`trend_holding.json`（操作台看）、週報最後一段 | 只記錄不下單；失敗只在週報印一行，下週重算補上 | 週報最後一段有筆數，沒有「失敗」字樣 |
+| 每日 5 檔合約候選（未驗證、只記錄，DESIGN 6.29） | 排程 `daily_picks` 08:05、操作台按鈕 | `scripts/daily_picks.py`、`src/crypto_robot/forecast/picks.py` | Binance 公開 API（不需要金鑰） | `state/forecast/daily_picks.jsonl`、`daily_picks_result.jsonl`、操作台「每日候選」 | 不下單；失敗看 `logs/daily_picks.log`，下一次重試或按鈕補做（當天候選只寫一次） | 操作台「每日候選」日期是今天 |
 | blend 前瞻模擬（2026-11-09 起，不碰真錢） | 排程 `futures_paper`（開機啟動）、`xsec_forward`（08:05） | `futures_agent/paper.py`、`lab/xsec.py`、`lab/xsec_blend.py`、`xsec_forward_train.py`（`_vendor/ml_venv`） | Binance 公開 API、`data/xsec/` | `state/futures/`、`data/xsec/` | 連線失敗下一分鐘重試；關機期間開機後補換倉與資金費率，不補算成交 | `check_futures_paper`：心跳超過 2 小時 🔴、程式錯誤 🔴、這週沒目標 🟡／🔴、模擬結束或暫停 🟡 |
 | 多空比資料收集（只存資料） | **手動**（2026-11-07 起不排程） | `positioning.py`、`fetch_positioning.py` | Binance 公開資料 | `state/positioning/positioning.db` | — | 不列在健康檢查（`check_positioning` 保留，要恢復排程時再接回） |
 | 系統與安全（不是排程） | 操作台開分頁時 | `health.py` 的 `check_system` | git、logs、考卷檔、K 線快取 | — | — | `.env` 沒進 git、專案資料夾沒有金鑰檔、紀錄檔沒有 webhook；考卷期與 K 線快取只顯示資訊 |
@@ -272,6 +277,7 @@ flowchart TD
 | `state/forecast/funding_long.jsonl` | 幣安資金費率做多的前瞻紀錄（2026-11-02 起，每週一補記，只新增；DESIGN 6.7） | 能從幣安公開資料重算，但紀錄本身是前瞻證據，不要刪 |
 | `state/forecast/kronos_ls.jsonl`、`kronos_judge.jsonl` | Kronos 每天 00:00 的多空預測、營運者的判斷（2026-11-03 起，只新增；DESIGN 6.7） | 判斷無法重建，紀錄是前瞻證據，不要刪；備份會帶到 |
 | `state/forecast/trend.jsonl`、`trend_universe.json` | trend 波段前瞻紀錄的完成交易、每月名單（2026-11-13 起，每週一補記，只新增；DESIGN 6.28） | 交易能從公開資料重算，但名單和紀錄是前瞻證據，不要刪 |
+| `state/forecast/daily_picks.jsonl`、`daily_picks_result.jsonl` | 每日 5 檔候選與記分（2026-11-16 起，只新增；DESIGN 6.29） | 候選本身不能重算（當天名單與時間點），不要刪 |
 | `state/forecast/trend_holding.json` | trend 還在抱的部位快照（每週一覆寫，只給操作台看；2026-11-15 起） | 可以（下週一重算會再寫） |
 | `state/futures/futures.db` | blend 前瞻模擬的帳戶（`main`，對照 `reference`）、成交、權益、事件 | **不能**（前瞻紀錄） |
 | `state/futures/targets.json`、`targets_history.jsonl`、`models/`、`preds/`、`preds_ridge/`、`heartbeat.json` | 每週目標與選幣池（歷史要留著算第 30 週的隨機對照）、每月模型、預測、心跳 | 歷史**不能**；其他能重建 |

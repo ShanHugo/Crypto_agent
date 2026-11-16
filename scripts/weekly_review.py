@@ -153,6 +153,30 @@ def blend_corr(rows: list[dict]) -> tuple[int, float | None]:
     return trend.correlation(trend.weekly_returns(rows), trend.blend_weekly(eq))
 
 
+def trend_universe(now: int) -> dict[str, list[str]]:
+    """trend 每月名單（DESIGN 6.28）：缺的月份才抓公開資料計算並存檔，算過的不重算。每日候選（6.29）也用。"""
+    uni = json.loads(TREND_UNI.read_text(encoding='utf-8')) if TREND_UNI.exists() else {}
+    keys, k = [], trend.month_key(trend.START_MS)
+    while k <= trend.month_key(now):
+        keys.append(k)
+        y, m = map(int, k.split('-'))
+        k = f'{y + m // 12:04d}-{m % 12 + 1:02d}'
+    missing = [k for k in keys if k not in uni]
+    if missing:   # 名單算過就存，之後不重算（幣下架後名單不會變）
+        info = fapi('/fapi/v1/exchangeInfo')['symbols']
+        cands = [s['symbol'] for s in info if s['contractType'] == 'PERPETUAL' and s['quoteAsset'] == 'USDT'
+                 and s.get('underlyingType') == 'COIN' and s['status'] == 'TRADING' and s['symbol'] not in EXCLUDE]
+        allday = {}
+        for s in cands:
+            allday[s] = trend.Daily.from_klines(fapi('/fapi/v1/klines', symbol=s, interval='1d', limit=200))
+            time.sleep(0.05)
+        for k in missing:
+            uni[k] = trend.universe(k, allday)
+        TREND_UNI.parent.mkdir(parents=True, exist_ok=True)
+        TREND_UNI.write_text(json.dumps(uni, ensure_ascii=False, indent=0), encoding='utf-8')
+    return uni
+
+
 def trend_section(update: bool) -> str:
     """trend 波段前瞻紀錄（DESIGN 6.28，只記錄不下單）。失敗只回一行，不影響週報。"""
     try:
@@ -160,25 +184,7 @@ def trend_section(update: bool) -> str:
             rows = trend.read_log(TREND_LOG)
             return trend.text(trend.status(rows), 0, 0, blend_corr(rows))
         now = int(time.time() * 1000)
-        uni = json.loads(TREND_UNI.read_text(encoding='utf-8')) if TREND_UNI.exists() else {}
-        keys, k = [], trend.month_key(trend.START_MS)
-        while k <= trend.month_key(now):
-            keys.append(k)
-            y, m = map(int, k.split('-'))
-            k = f'{y + m // 12:04d}-{m % 12 + 1:02d}'
-        missing = [k for k in keys if k not in uni]
-        if missing:   # 名單算過就存，之後不重算（幣下架後名單不會變）
-            info = fapi('/fapi/v1/exchangeInfo')['symbols']
-            cands = [s['symbol'] for s in info if s['contractType'] == 'PERPETUAL' and s['quoteAsset'] == 'USDT'
-                     and s.get('underlyingType') == 'COIN' and s['status'] == 'TRADING' and s['symbol'] not in EXCLUDE]
-            allday = {}
-            for s in cands:
-                allday[s] = trend.Daily.from_klines(fapi('/fapi/v1/klines', symbol=s, interval='1d', limit=200))
-                time.sleep(0.05)
-            for k in missing:
-                uni[k] = trend.universe(k, allday)
-            TREND_UNI.parent.mkdir(parents=True, exist_ok=True)
-            TREND_UNI.write_text(json.dumps(uni, ensure_ascii=False, indent=0), encoding='utf-8')
+        uni = trend_universe(now)
         daily = {s: trend.Daily.from_klines(fapi('/fapi/v1/klines', symbol=s, interval='1d', limit=500))
                  for s in sorted({s for v in uni.values() for s in v})}
         cache15: dict = {}

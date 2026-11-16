@@ -38,7 +38,7 @@ BACKUP_STATUS = ROOT / 'state' / 'backup' / 'last.json'
 REPORTS = ROOT / 'reports'
 LOGS = {'paper_rebalance': ROOT / 'logs' / 'paper_rebalance.log', 'paper_report': ROOT / 'logs' / 'paper_report.log',
         'kronos_forecast': ROOT / 'logs' / 'kronos_forecast.log', 'xsec_forward': ROOT / 'logs' / 'xsec_forward.log',
-        'futures_paper': ROOT / 'logs' / 'futures_paper.log'}
+        'futures_paper': ROOT / 'logs' / 'futures_paper.log', 'daily_picks': ROOT / 'logs' / 'daily_picks.log'}
 FUTURES = ROOT / 'state' / 'futures'
 
 
@@ -203,6 +203,24 @@ def trend_data() -> dict:
     }
 
 
+def picks_data() -> dict:
+    """每日 5 檔合約候選（DESIGN 6.29，未驗證、只記錄）：只讀 daily_picks.py 寫的紀錄檔，不連網。"""
+    import daily_picks as dp
+    from crypto_robot.forecast import picks, trend
+    days = trend.read_log(dp.PICKS)
+    res = {(r['t'], r['sym']): r for r in trend.read_log(dp.RESULTS)}
+    hist = []
+    for d in days[-14:]:
+        for p in d['picks']:
+            r = res.get((p['t'], p['sym']))
+            hist.append({'date': d['date'], 'sym': p['sym'], 'side': p['side'], 'lev': p['lev'], 'entry': p['entry'],
+                         'how': r['how'] if r else None, 'exit': r['exit_px'] if r else None, 'at': at(r['exit_t']) if r else None,
+                         'margin': r['margin'] if r else None})
+    latest = days[-1] if days else None
+    return {'latest': None if latest is None else {'date': latest['date'], 'made_at': at(latest['made_at']), 'picks': latest['picks']},
+            'summary': picks.summary(list(res.values())), 'history': hist[::-1]}
+
+
 def kronos_days() -> set:
     """kronos_ls.jsonl 裡有預測的台北日期（給健康檢查）。"""
     from crypto_robot.forecast import kronos_ls as kl
@@ -271,6 +289,7 @@ def main() -> None:
         'forecast': forecast_data(now),
         'futures': futures,
         'trend': trend_data(),
+        'picks': picks_data(),
         'health': {'agents': agents, 'overall': hc.overall(agents)},
         'logs': {k: [hc.WEBHOOK.sub('<webhook>/', ln) for ln in v[-80:]] for k, v in logs.items()},
     }
