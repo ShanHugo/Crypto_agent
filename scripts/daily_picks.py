@@ -67,6 +67,11 @@ def main() -> None:
     now = int(time.time() * 1000)
     msg = make_today(now, trend.read_log(PICKS))
     added = score_open(now, trend.read_log(PICKS))
+    try:                                                          # 順便替「我的合約」滿 24 小時的分析對答案（DESIGN 6.30）
+        import analyze_24h
+        analyze_24h.score_due(now)
+    except Exception as e:   # noqa: BLE001
+        print(f'我的合約對答案失敗：{type(e).__name__}: {e}')
     s = picks.summary(trend.read_log(RESULTS))
     print(msg)
     print(f'本次記分 {added} 檔；累計結束 {s["n"]} 檔' + (f'，勝率 {s["win"]:.0%}、平均 {s["avg_r"]:+.2f}R' if s['n'] else ''))

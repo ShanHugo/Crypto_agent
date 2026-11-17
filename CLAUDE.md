@@ -29,6 +29,7 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 - **第三十一輪（2026-11-12，波段抱 1～10 天，2 倍 ATR 停損，`trend`、`swing_gbm`、`swing_gate`）**：研究期 2021～2024 都沒過（只卡 t ≥ 3 和回撤）；`trend`（週線＋日線同向且創 20 日新高／新低）扣成本後每筆 +1.76%、t 2.34、前後半都正、贏隨機，但回撤 -50%。隨機方向也賺（出場結構的功勞），模型組和打亂對照差不多。抱波段碰到 10 倍爆倉距離 42%～53%，只適合 2～3 倍。營運者破例讓 `trend` 考 2026-01～10 考卷也沒過（每筆 +2.41% 但 t 1.30、6～10 月虧、回撤 -30.4%，和隨機方向差不多），**考卷已用掉，現在沒有任何沒看過的歷史資料**。程式已刪除（`git checkout e6ebace`，DESIGN 6.3、6.27）。
 - **trend 波段前瞻紀錄（2026-11-12 營運者破例同意，DESIGN 6.28）**：第三十一輪 `trend` 原樣，從 2026-11-13 起每週一週報後用公開資料重算、只補記完成的交易；不用金鑰、不下單。100 筆中途檢查、300 筆最後判定（約 2027 年下半年）；第 3 關不算過。和 `blend` 前瞻並行，週報列每週相關係數。
 - **每日 5 檔合約候選（2026-11-16 營運者決定，DESIGN 6.29）**：`trend` 名單＋週線／日線同向，2×ATR 停損、2R 止盈、3～5 倍；沒通過任何考試，只記錄並自動記分，營運者自己手動下單；不用金鑰、不下單。
+- **「我的合約」24 小時多空分析（2026-11-17 營運者決定，DESIGN 6.30）**：營運者在操作台輸入幣名，Kronos 依序看週線到 5 分 6 個週期、各模擬 30 次，平均收漲比例 ≥ 60% 偏多、≤ 40% 偏空；未驗證，每次分析滿 24 小時自動對答案。
 - **blend 前瞻模擬（2026-11-06 營運者破例同意，DESIGN 6.18，tick 規則在 6.16）**：`gbm`、`ridge`、動能排名平均，取代還沒開始的 `gbm` 單獨模擬（`gbm` 模型還是成員），從 2026-11-09 起模擬，不用金鑰、不下單、不碰真錢；第 4 週查流程、第 30 週（約 2027-06-07）查績效。第 3 關不算過。下單程式還沒有，要到 testnet 階段另外畫圖。
 - 十六輪研究共 201 組（第十一輪是槓桿、第十二～十四輪是短線方向、跌破後做多、Binance 合約資金費率，第十五、十六輪是 Kronos 模型預測 3 小時／隔天，都沒過；第十四輪 `fund_streak` 只差 t、第十六輪 `d1_agree` 破例考卷也都沒過）：只有現貨比例再平衡留下（營運者仍可能找新規則；照 `/research-round` 先訂標準）。**ETH 考卷期（2024-01-01 起）已用掉**，結果在 `state/research/holdout.json`。
 - **真單**：**2026-10-27 01:35 起開啟**（第一階段 6,000 元，上限 9,000 元），規則同主帳戶；計畫與 MAX 私有 API 查核在 `docs/DESIGN.md` 6.5。金鑰開查詢＋交易（沒開提領）。由 `.env` 的 `LIVE_TRADING=1`＋`LIVE_CONFIRM=I_UNDERSTAND` 開啟，每天 01:35 執行；預覽用 `scripts/live_trade.py --plan`、紀錄用 `--status`。跑滿 2 週（約 11/10）沒有 🔴 才討論加碼；金鑰絕不經過對話。
@@ -57,7 +58,7 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 | 再平衡判斷（研究與模擬共用） | `src/crypto_robot/agents/strategy/rebalance.py`；多資產是 `rebalance_multi.py` |
 | 排程時間 | `scripts/register_tasks.ps1` 的 `$tasks`（改完請使用者以系統管理員重跑） |
 | MAX 公開 API | `src/crypto_robot/exchange/max/public.py`（端點已實測，見 DESIGN.md 第 1 節） |
-| 操作台「虛擬貨幣」分頁的資料、Agent 健康檢查 | `scripts/console_data.py`（只讀 JSON；Kronos／資金費率前瞻紀錄在 `forecast_data()`；blend 走勢與部位在 `futures_data()`、trend 在 `trend_data()`）、`src/crypto_robot/health.py`；畫面與 API 在 Cashflow_orchestrator 的 `src/console/templates/console.html`（子分頁：總覽、每日候選、前瞻紀錄、健康與排程、紀錄；`loadCrypto`、`renderCryptoForecast`、`renderCryptoPicks`）、`src/console/app.py`（`/api/crypto`） |
+| 操作台「虛擬貨幣」分頁的資料、Agent 健康檢查 | `scripts/console_data.py`（只讀 JSON；Kronos／資金費率前瞻紀錄在 `forecast_data()`；blend 走勢與部位在 `futures_data()`、trend 在 `trend_data()`）、`src/crypto_robot/health.py`；畫面與 API 在 Cashflow_orchestrator 的 `src/console/templates/console.html`（子分頁：總覽、每日候選、我的合約、前瞻紀錄、健康與排程、紀錄；`loadCrypto`、`renderCryptoForecast`、`renderCryptoPicks`）、`src/console/app.py`（`/api/crypto`） |
 | 每週事實檢討（第 2 關的成績單，每週一 08:30 報告後） | `src/crypto_robot/weekly.py`（計算與文字）、`scripts/weekly_review.py`（讀資料、存 `reports/weekly_*.md`、推送）；只列數字，不加建議 |
 | 備份 | `src/crypto_robot/backup.py`、`scripts/backup.py`；08:30 報告推送後自動執行；目的地在 `.env` 的 `BACKUP_DIRS`（不要寫進 git） |
 | 真單執行與安全檢查 | `src/crypto_robot/live/executor.py`（`check_guards`、`plan_orders`、`run_live`）、`scripts/live_trade.py`（開關、設定、`--plan`）；紀錄 `state/live/live.db` |
@@ -66,6 +67,7 @@ MAX 交易所 ETH/TWD 現貨，個人自用。使用者說繁體中文；對使�
 | blend 前瞻模擬（不碰真錢） | 模擬帳戶 `src/crypto_robot/futures_agent/paper.py`；常駐程序 `scripts/futures_paper.py`；每週目標 `scripts/xsec_forward.py`、訓練 `scripts/xsec_forward_train.py`、名單 `lab/xsec_blend.py` 的 `blend_picks`；健康檢查 `health.py` 的 `check_futures_paper`；狀態 `state/futures/`；設計 DESIGN 6.18、6.16 |
 | trend 波段前瞻紀錄（只記錄，DESIGN 6.28） | `src/crypto_robot/forecast/trend.py`（規則同第三十一輪，看過結果後不改）；`scripts/weekly_review.py` 的 `trend_section()` 每週一抓公開資料重算、只補記；紀錄 `state/forecast/trend.jsonl`、`trend_universe.json`；還在抱的部位快照 `trend_holding.json`（每週覆寫，操作台用） |
 | 每日 5 檔合約候選（未驗證、只記錄，DESIGN 6.29） | `src/crypto_robot/forecast/picks.py`（規則、記分）、`scripts/daily_picks.py`（排程 08:05，抓公開資料、寫 `state/forecast/daily_picks*.jsonl`）；操作台資料 `console_data.py` 的 `picks_data()`、畫面「虛擬貨幣 → 每日候選」 |
+| 「我的合約」24 小時多空分析（未驗證、只記錄，DESIGN 6.30） | `src/crypto_robot/forecast/mtf24.py`（週期、結論、對答案）、`scripts/analyze_24h.py`（抓公開 K 線、叫 `kronos_model.py` 的 `frames` 模式）；紀錄 `state/forecast/analyze_24h*.jsonl`；操作台資料 `console_data.py` 的 `mine_data()`、畫面「虛擬貨幣 → 我的合約」（`renderCryptoMine`） |
 | 多空比與未平倉量資料收集（2026-11-07 起不排程，手動執行） | `src/crypto_robot/positioning.py`、`scripts/fetch_positioning.py`；健康檢查 `health.py` 的 `check_positioning`（目前沒接）；資料 `state/positioning/positioning.db`；設計 DESIGN 6.19 |
 | 開發用一鍵檢查（不用 AI）、唯讀檢查員子代理 | `scripts/devcheck.py`（健康燈號、測試、排程、git；測試 `tests/test_devcheck.py`）、`.claude/agents/checker.md`（Haiku，只讀）；營運者說「幫我檢查」時先自己跑 devcheck（約 2 行），有 🟡／🔴 要翻日誌才派 `checker`（一次約 6 萬 Haiku token），不要自己讀原始輸出；設計 DESIGN 6.21 |
 | 研究 | `src/crypto_robot/lab/`（`rebalance_variants.py` 是事先訂定的組合與標準，看過結果後不得修改） |

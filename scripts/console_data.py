@@ -221,6 +221,17 @@ def picks_data() -> dict:
             'summary': picks.summary(list(res.values())), 'history': hist[::-1]}
 
 
+def mine_data() -> dict:
+    """「我的合約」24 小時多空分析（DESIGN 6.30，未驗證、只記錄）：只讀 analyze_24h.py 的紀錄檔，不連網。"""
+    import analyze_24h as az
+    from crypto_robot.forecast import mtf24, trend
+    res = {(r['t'], r['sym']): r for r in trend.read_log(az.RESULTS)}
+    rows = trend.read_log(az.LOG)[-30:]
+    hist = [{**{k: r[k] for k in ('sym', 'price', 'frames', 'score', 'call', 'against_week', 'rules')}, 'at': at(r['t']),
+             'result': res.get((r['t'], r['sym']))} for r in rows]
+    return {'labels': mtf24.LABEL, 'history': hist[::-1], 'summary': mtf24.summary(list(res.values()))}
+
+
 def kronos_days() -> set:
     """kronos_ls.jsonl 裡有預測的台北日期（給健康檢查）。"""
     from crypto_robot.forecast import kronos_ls as kl
@@ -290,6 +301,7 @@ def main() -> None:
         'futures': futures,
         'trend': trend_data(),
         'picks': picks_data(),
+        'mine': mine_data(),
         'health': {'agents': agents, 'overall': hc.overall(agents)},
         'logs': {k: [hc.WEBHOOK.sub('<webhook>/', ln) for ln in v[-80:]] for k, v in logs.items()},
     }
